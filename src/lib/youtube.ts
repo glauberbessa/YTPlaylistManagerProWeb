@@ -37,7 +37,7 @@ export class YouTubeService {
           description: item.snippet?.description || "",
           itemCount: item.contentDetails?.itemCount || 0,
           createdDate: item.snippet?.publishedAt || "",
-          thumbnailUrl: item.snippet?.thumbnails?.medium?.url,
+          thumbnailUrl: item.snippet?.thumbnails?.medium?.url || undefined,
         });
       }
 
@@ -71,11 +71,11 @@ export class YouTubeService {
             id: item.id!,
             videoId,
             title: item.snippet?.title || "",
-            description: item.snippet?.description,
-            channelId: item.snippet?.videoOwnerChannelId,
+            description: item.snippet?.description || undefined,
+            channelId: item.snippet?.videoOwnerChannelId || undefined,
             channelTitle: item.snippet?.videoOwnerChannelTitle || "",
             thumbnailUrl: item.snippet?.thumbnails?.medium?.url || "",
-            addedToPlaylistAt: item.snippet?.publishedAt,
+            addedToPlaylistAt: item.snippet?.publishedAt || undefined,
             duration: "",
             durationInSeconds: 0,
             viewCount: 0,
@@ -265,7 +265,7 @@ export class YouTubeService {
             thumbnailUrl: item.snippet?.thumbnails?.medium?.url || "",
             subscriberCount: 0,
             videoCount: 0,
-            subscribedAt: item.snippet?.publishedAt,
+            subscribedAt: item.snippet?.publishedAt || undefined,
           });
         }
       }
@@ -332,8 +332,8 @@ export class YouTubeService {
           id: "", // Não há playlistItemId aqui
           videoId: video.id!,
           title: video.snippet?.title || "",
-          description: video.snippet?.description,
-          channelId: video.snippet?.channelId,
+          description: video.snippet?.description || undefined,
+          channelId: video.snippet?.channelId || undefined,
           channelTitle: video.snippet?.channelTitle || "",
           duration: video.contentDetails?.duration || "",
           durationInSeconds: parseDuration(
