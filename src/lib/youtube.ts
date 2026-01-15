@@ -37,7 +37,7 @@ export class YouTubeService {
           description: item.snippet?.description || "",
           itemCount: item.contentDetails?.itemCount || 0,
           createdDate: item.snippet?.publishedAt || "",
-          thumbnailUrl: item.snippet?.thumbnails?.medium?.url || undefined,
+          thumbnailUrl: item.snippet?.thumbnails?.medium?.url ?? undefined,
         });
       }
 
