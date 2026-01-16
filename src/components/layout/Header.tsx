@@ -31,7 +31,7 @@ export function Header() {
           </Button>
         </SheetTrigger>
         <SheetContent side="left" className="p-0 w-64">
-          <Sidebar />
+          <Sidebar showToggle={false} />
         </SheetContent>
       </Sheet>
 

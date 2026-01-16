@@ -1,16 +1,23 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/use-toast";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { ChannelWithConfig } from "@/types/channel";
 import { UI_TEXT } from "@/lib/i18n";
 import { formatNumber, formatDate } from "@/lib/utils";
-import { Settings2, Check, Loader2 } from "lucide-react";
+import { Settings2, Check, Loader2, ArrowUp, ArrowDown } from "lucide-react";
 
 async function fetchChannels(): Promise<ChannelWithConfig[]> {
   const res = await fetch("/api/channels");
@@ -30,10 +37,15 @@ async function saveChannelConfigs(
   return res.json();
 }
 
+type SortField = "title" | "subscribedAt";
+type SortDirection = "asc" | "desc";
+
 export default function ConfigChannelsPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [enabledMap, setEnabledMap] = useState<Record<string, boolean>>({});
+  const [sortField, setSortField] = useState<SortField>("subscribedAt");
+  const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
 
   const { data: channels, isLoading } = useQuery({
     queryKey: ["channels"],
@@ -69,6 +81,25 @@ export default function ConfigChannelsPage() {
     }
   }, [channels]);
 
+  // Ordenar canais
+  const sortedChannels = useMemo(() => {
+    if (!channels) return [];
+
+    return [...channels].sort((a, b) => {
+      let comparison = 0;
+
+      if (sortField === "title") {
+        comparison = a.title.localeCompare(b.title);
+      } else if (sortField === "subscribedAt") {
+        const dateA = a.subscribedAt ? new Date(a.subscribedAt).getTime() : 0;
+        const dateB = b.subscribedAt ? new Date(b.subscribedAt).getTime() : 0;
+        comparison = dateA - dateB;
+      }
+
+      return sortDirection === "asc" ? comparison : -comparison;
+    });
+  }, [channels, sortField, sortDirection]);
+
   const handleToggle = (channelId: string, enabled: boolean) => {
     setEnabledMap((prev) => ({ ...prev, [channelId]: enabled }));
   };
@@ -101,6 +132,26 @@ export default function ConfigChannelsPage() {
       map[c.id] = false;
     });
     setEnabledMap(map);
+  };
+
+  const handleHeaderDoubleClick = (field: SortField) => {
+    if (sortField === field) {
+      // Toggle direction if same field
+      setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
+    } else {
+      // Set new field with default direction
+      setSortField(field);
+      setSortDirection(field === "subscribedAt" ? "desc" : "asc");
+    }
+  };
+
+  const SortIcon = ({ field }: { field: SortField }) => {
+    if (sortField !== field) return null;
+    return sortDirection === "asc" ? (
+      <ArrowUp className="ml-1 h-4 w-4 inline" />
+    ) : (
+      <ArrowDown className="ml-1 h-4 w-4 inline" />
+    );
   };
 
   return (
@@ -137,43 +188,73 @@ export default function ConfigChannelsPage() {
         </Button>
       </div>
 
-      {/* Channels List */}
+      {/* Channels Table */}
       {isLoading ? (
         <div className="space-y-3">
-          <Skeleton className="h-20 w-full" />
-          <Skeleton className="h-20 w-full" />
-          <Skeleton className="h-20 w-full" />
+          <Skeleton className="h-12 w-full" />
+          <Skeleton className="h-12 w-full" />
+          <Skeleton className="h-12 w-full" />
         </div>
       ) : (
-        <div className="space-y-3">
-          {channels?.map((channel) => (
-            <Card key={channel.id}>
-              <CardContent className="flex items-center justify-between py-4">
-                <div className="flex-1 min-w-0">
-                  <h3 className="font-medium truncate">{channel.title}</h3>
-                  <p className="text-sm text-muted-foreground">
-                    {formatNumber(channel.videoCount)} {UI_TEXT.config.videos}
-                    {channel.subscribedAt && (
-                      <> • Inscrito em {formatDate(channel.subscribedAt)}</>
-                    )}
-                  </p>
-                </div>
-                <div className="flex items-center gap-3">
-                  <span className="text-sm text-muted-foreground">
-                    {enabledMap[channel.id]
-                      ? UI_TEXT.config.enabled
-                      : UI_TEXT.config.disabled}
-                  </span>
-                  <Switch
-                    checked={enabledMap[channel.id] ?? true}
-                    onCheckedChange={(checked) =>
-                      handleToggle(channel.id, checked)
-                    }
-                  />
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+        <div className="rounded-md border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead
+                  className="cursor-pointer select-none hover:bg-muted/50"
+                  onDoubleClick={() => handleHeaderDoubleClick("title")}
+                  title="Clique duplo para ordenar"
+                >
+                  Título
+                  <SortIcon field="title" />
+                </TableHead>
+                <TableHead
+                  className="cursor-pointer select-none hover:bg-muted/50"
+                  onDoubleClick={() => handleHeaderDoubleClick("subscribedAt")}
+                  title="Clique duplo para ordenar"
+                >
+                  Data de Inscrição
+                  <SortIcon field="subscribedAt" />
+                </TableHead>
+                <TableHead className="text-center">Vídeos</TableHead>
+                <TableHead className="text-right">Status</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {sortedChannels.map((channel) => (
+                <TableRow key={channel.id}>
+                  <TableCell className="font-medium">
+                    <span className="truncate block max-w-[300px]">
+                      {channel.title}
+                    </span>
+                  </TableCell>
+                  <TableCell>
+                    {channel.subscribedAt
+                      ? formatDate(channel.subscribedAt)
+                      : "-"}
+                  </TableCell>
+                  <TableCell className="text-center">
+                    {formatNumber(channel.videoCount)}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex items-center justify-end gap-3">
+                      <span className="text-sm text-muted-foreground">
+                        {enabledMap[channel.id]
+                          ? UI_TEXT.config.enabled
+                          : UI_TEXT.config.disabled}
+                      </span>
+                      <Switch
+                        checked={enabledMap[channel.id] ?? true}
+                        onCheckedChange={(checked) =>
+                          handleToggle(channel.id, checked)
+                        }
+                      />
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         </div>
       )}
     </div>
