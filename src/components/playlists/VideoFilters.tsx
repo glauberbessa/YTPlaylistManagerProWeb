@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -16,13 +16,15 @@ import { Search, RotateCcw, Filter, ChevronDown, ChevronUp } from "lucide-react"
 import { useFilterStore } from "@/stores/filterStore";
 import { UI_TEXT } from "@/lib/i18n";
 import { getLanguageName } from "@/lib/utils";
-import { DURATION_PRESETS, VIEW_COUNT_PRESETS } from "@/types/filter";
+import { DURATION_PRESETS, VIEW_COUNT_PRESETS, DurationPreset, ViewCountPreset } from "@/types/filter";
+import { Video } from "@/types/video";
 
 interface VideoFiltersProps {
   availableLanguages: string[];
+  videos: Video[];
 }
 
-export function VideoFilters({ availableLanguages }: VideoFiltersProps) {
+export function VideoFilters({ availableLanguages, videos }: VideoFiltersProps) {
   const {
     filter,
     durationPreset,
@@ -38,6 +40,48 @@ export function VideoFilters({ availableLanguages }: VideoFiltersProps) {
   } = useFilterStore();
 
   const [isExpanded, setIsExpanded] = useState(false);
+
+  // Calcular quais presets de duração têm vídeos
+  const availableDurationPresets = useMemo(() => {
+    const available: Record<DurationPreset, boolean> = {
+      all: true,
+      shorts: false,
+      short: false,
+      medium: false,
+      long: false,
+    };
+
+    for (const video of videos) {
+      const duration = video.durationInSeconds;
+      if (duration >= 0 && duration < 60) available.shorts = true;
+      if (duration >= 60 && duration < 300) available.short = true;
+      if (duration >= 300 && duration < 1200) available.medium = true;
+      if (duration >= 1200) available.long = true;
+    }
+
+    return available;
+  }, [videos]);
+
+  // Calcular quais presets de visualizações têm vídeos
+  const availableViewCountPresets = useMemo(() => {
+    const available: Record<ViewCountPreset, boolean> = {
+      all: true,
+      low: false,
+      medium: false,
+      high: false,
+      viral: false,
+    };
+
+    for (const video of videos) {
+      const viewCount = video.viewCount;
+      if (viewCount >= 0 && viewCount < 1000) available.low = true;
+      if (viewCount >= 1000 && viewCount < 10000) available.medium = true;
+      if (viewCount >= 10000 && viewCount < 100000) available.high = true;
+      if (viewCount >= 100000) available.viral = true;
+    }
+
+    return available;
+  }, [videos]);
 
   return (
     <Card>
@@ -134,7 +178,12 @@ export function VideoFilters({ availableLanguages }: VideoFiltersProps) {
               className="flex-wrap justify-start"
             >
               {Object.entries(DURATION_PRESETS).map(([key, preset]) => (
-                <ToggleGroupItem key={key} value={key} size="sm">
+                <ToggleGroupItem
+                  key={key}
+                  value={key}
+                  size="sm"
+                  disabled={!availableDurationPresets[key as DurationPreset]}
+                >
                   {preset.label}
                 </ToggleGroupItem>
               ))}
@@ -154,7 +203,12 @@ export function VideoFilters({ availableLanguages }: VideoFiltersProps) {
               className="flex-wrap justify-start"
             >
               {Object.entries(VIEW_COUNT_PRESETS).map(([key, preset]) => (
-                <ToggleGroupItem key={key} value={key} size="sm">
+                <ToggleGroupItem
+                  key={key}
+                  value={key}
+                  size="sm"
+                  disabled={!availableViewCountPresets[key as ViewCountPreset]}
+                >
                   {preset.label}
                 </ToggleGroupItem>
               ))}

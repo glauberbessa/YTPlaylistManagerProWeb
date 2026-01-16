@@ -127,7 +127,7 @@ export class YouTubeService {
   async addVideoToPlaylist(
     playlistId: string,
     videoId: string
-  ): Promise<boolean> {
+  ): Promise<{ success: boolean; error?: string }> {
     try {
       await this.youtube.playlistItems.insert({
         part: ["snippet"],
@@ -143,25 +143,31 @@ export class YouTubeService {
       });
 
       await trackQuotaUsage(this.userId, "playlistItems.insert");
-      return true;
-    } catch (error) {
+      return { success: true };
+    } catch (error: unknown) {
       console.error("Erro ao adicionar vídeo:", error);
-      return false;
+      const errorMessage = error instanceof Error ? error.message : "Erro desconhecido";
+      // Verificar se é erro de duplicado
+      if (errorMessage.includes("videoAlreadyInPlaylist") || errorMessage.includes("duplicate")) {
+        return { success: false, error: "Vídeo já existe na playlist de destino" };
+      }
+      return { success: false, error: errorMessage };
     }
   }
 
   // Remover vídeo de uma playlist
-  async removeVideoFromPlaylist(playlistItemId: string): Promise<boolean> {
+  async removeVideoFromPlaylist(playlistItemId: string): Promise<{ success: boolean; error?: string }> {
     try {
       await this.youtube.playlistItems.delete({
         id: playlistItemId,
       });
 
       await trackQuotaUsage(this.userId, "playlistItems.delete");
-      return true;
-    } catch (error) {
+      return { success: true };
+    } catch (error: unknown) {
       console.error("Erro ao remover vídeo:", error);
-      return false;
+      const errorMessage = error instanceof Error ? error.message : "Erro desconhecido";
+      return { success: false, error: errorMessage };
     }
   }
 
@@ -191,18 +197,18 @@ export class YouTubeService {
     for (const video of videos) {
       try {
         // 1. Adicionar ao destino
-        const addSuccess = await this.addVideoToPlaylist(
+        const addResult = await this.addVideoToPlaylist(
           destinationPlaylistId,
           video.videoId
         );
 
-        if (addSuccess) {
+        if (addResult.success) {
           // 2. Remover da origem
-          const removeSuccess = await this.removeVideoFromPlaylist(
+          const removeResult = await this.removeVideoFromPlaylist(
             video.playlistItemId
           );
 
-          if (removeSuccess) {
+          if (removeResult.success) {
             transferred++;
             details.push({ videoId: video.videoId, status: "success" });
           } else {
@@ -210,7 +216,7 @@ export class YouTubeService {
             details.push({
               videoId: video.videoId,
               status: "error",
-              error: "Erro ao remover da playlist de origem",
+              error: removeResult.error || "Erro ao remover da playlist de origem",
             });
           }
         } else {
@@ -218,7 +224,7 @@ export class YouTubeService {
           details.push({
             videoId: video.videoId,
             status: "error",
-            error: "Erro ao adicionar à playlist de destino",
+            error: addResult.error || "Erro ao adicionar à playlist de destino",
           });
         }
       } catch (error) {
@@ -377,9 +383,9 @@ export class YouTubeService {
 
     for (const videoId of videoIds) {
       try {
-        const success = await this.addVideoToPlaylist(playlistId, videoId);
+        const result = await this.addVideoToPlaylist(playlistId, videoId);
 
-        if (success) {
+        if (result.success) {
           added++;
           details.push({ videoId, status: "success" });
         } else {
@@ -387,7 +393,7 @@ export class YouTubeService {
           details.push({
             videoId,
             status: "error",
-            error: "Erro ao adicionar à playlist",
+            error: result.error || "Erro ao adicionar à playlist",
           });
         }
       } catch (error) {

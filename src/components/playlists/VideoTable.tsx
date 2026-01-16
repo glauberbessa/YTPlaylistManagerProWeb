@@ -131,28 +131,40 @@ export function VideoTable({
       {
         accessorKey: "durationInSeconds",
         header: ({ column }) => (
-          <Button
-            variant="ghost"
-            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-          >
-            {UI_TEXT.columns.duration}
-            <ArrowUpDown className="ml-2 h-4 w-4" />
-          </Button>
+          <div className="text-right">
+            <Button
+              variant="ghost"
+              onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+            >
+              {UI_TEXT.columns.duration}
+              <ArrowUpDown className="ml-2 h-4 w-4" />
+            </Button>
+          </div>
         ),
-        cell: ({ row }) => formatDuration(row.original.durationInSeconds),
+        cell: ({ row }) => (
+          <div className="text-right">
+            {formatDuration(row.original.durationInSeconds)}
+          </div>
+        ),
       },
       {
         accessorKey: "viewCount",
         header: ({ column }) => (
-          <Button
-            variant="ghost"
-            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-          >
-            {UI_TEXT.columns.views}
-            <ArrowUpDown className="ml-2 h-4 w-4" />
-          </Button>
+          <div className="text-right">
+            <Button
+              variant="ghost"
+              onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+            >
+              {UI_TEXT.columns.views}
+              <ArrowUpDown className="ml-2 h-4 w-4" />
+            </Button>
+          </div>
         ),
-        cell: ({ row }) => formatViewCount(row.original.viewCount),
+        cell: ({ row }) => (
+          <div className="text-right">
+            {formatViewCount(row.original.viewCount)}
+          </div>
+        ),
       },
       {
         accessorKey: "publishedAt",

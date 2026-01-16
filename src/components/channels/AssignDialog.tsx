@@ -13,7 +13,7 @@ import { Progress } from "@/components/ui/progress";
 import { useAssign } from "@/hooks/useTransfer";
 import { useQuota } from "@/hooks/useQuota";
 import { useToast } from "@/components/ui/use-toast";
-import { calculateAssignCost } from "@/lib/quota";
+import { calculateAssignCost } from "@/lib/quota.shared";
 import { UI_TEXT, t } from "@/lib/i18n";
 import { formatNumber } from "@/lib/utils";
 import { AlertTriangle, Loader2 } from "lucide-react";
