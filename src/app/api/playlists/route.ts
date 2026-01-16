@@ -46,6 +46,9 @@ export async function GET() {
       };
     });
 
+    // Ordenar playlists por título (A-Z)
+    playlistsWithConfig.sort((a, b) => a.title.localeCompare(b.title));
+
     return NextResponse.json(playlistsWithConfig);
   } catch (error) {
     console.error("Erro ao buscar playlists:", error);

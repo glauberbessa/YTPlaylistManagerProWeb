@@ -20,7 +20,8 @@ import { useToast } from "@/components/ui/use-toast";
 
 export default function PlaylistsPage() {
   const { toast } = useToast();
-  const [sourcePlaylistId, setSourcePlaylistId] = useState<string | null>(null);
+  const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null);
+  const [activeSourceId, setActiveSourceId] = useState<string | null>(null);
   const [destinationPlaylistId, setDestinationPlaylistId] = useState<string | null>(null);
   const [selectedVideos, setSelectedVideos] = useState<Set<string>>(new Set());
   const [transferDialogOpen, setTransferDialogOpen] = useState(false);
@@ -31,7 +32,7 @@ export default function PlaylistsPage() {
     data: videos = [],
     isLoading,
     refetch,
-  } = usePlaylistItems(sourcePlaylistId);
+  } = usePlaylistItems(activeSourceId);
 
   const { filteredVideos, availableLanguages } = useVideoFilters(videos, filter);
 
@@ -57,9 +58,19 @@ export default function PlaylistsPage() {
   }, [filteredVideos]);
 
   const handleSourceChange = (playlistId: string) => {
-    setSourcePlaylistId(playlistId);
-    setSelectedVideos(new Set());
-    resetFilters();
+    setSelectedSourceId(playlistId);
+    // Resetar estado de visualização se mudar a playlist
+    if (playlistId !== activeSourceId) {
+      setActiveSourceId(null);
+      setSelectedVideos(new Set());
+      resetFilters();
+    }
+  };
+
+  const handleListVideos = () => {
+    if (selectedSourceId) {
+      setActiveSourceId(selectedSourceId);
+    }
   };
 
   const handleTransferClick = () => {
@@ -81,7 +92,7 @@ export default function PlaylistsPage() {
       return;
     }
 
-    if (sourcePlaylistId === destinationPlaylistId) {
+    if (activeSourceId === destinationPlaylistId) {
       toast({
         title: UI_TEXT.general.error,
         description: UI_TEXT.messages.samePlaylist,
@@ -120,13 +131,21 @@ export default function PlaylistsPage() {
               {UI_TEXT.playlists.sourcePlaylist}
             </CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-4">
             <PlaylistSelector
-              value={sourcePlaylistId}
+              value={selectedSourceId}
               onChange={handleSourceChange}
               label=""
               showOnlyEnabled
             />
+            <Button
+              className="w-full"
+              onClick={handleListVideos}
+              disabled={!selectedSourceId || selectedSourceId === activeSourceId && !isLoading}
+            >
+              <ListVideo className="mr-2 h-4 w-4" />
+              {UI_TEXT.playlists.listVideos}
+            </Button>
           </CardContent>
         </Card>
 
@@ -141,7 +160,7 @@ export default function PlaylistsPage() {
               value={destinationPlaylistId}
               onChange={setDestinationPlaylistId}
               label=""
-              excludeId={sourcePlaylistId || undefined}
+              excludeId={selectedSourceId || undefined}
               showOnlyEnabled
             />
           </CardContent>
@@ -149,7 +168,7 @@ export default function PlaylistsPage() {
       </div>
 
       {/* Content */}
-      {sourcePlaylistId && (
+      {activeSourceId && (
         <>
           {/* Filters */}
           <VideoFilters availableLanguages={availableLanguages} />
@@ -182,43 +201,52 @@ export default function PlaylistsPage() {
                 onToggleSelect={handleToggleSelect}
                 onToggleSelectAll={handleToggleSelectAll}
               />
-
-              {/* Transfer Button */}
-              <div className="flex justify-end">
-                <Button
-                  size="lg"
-                  onClick={handleTransferClick}
-                  disabled={
-                    selectedVideos.size === 0 || !destinationPlaylistId
-                  }
-                >
-                  {UI_TEXT.playlists.transferVideos}
-                  <ArrowRight className="ml-2 h-5 w-5" />
-                </Button>
-              </div>
             </>
           )}
         </>
       )}
 
+      {/* Sticky Transfer Bar */}
+      {activeSourceId && (
+        <div className="fixed bottom-0 left-0 right-0 bg-background border-t p-4 z-50 shadow-lg md:pl-[250px]">
+          <div className="container flex justify-between items-center max-w-7xl mx-auto">
+            <span className="text-sm text-muted-foreground hidden md:inline-block">
+              {selectedVideos.size} vídeos selecionados
+            </span>
+            <Button
+              size="lg"
+              onClick={handleTransferClick}
+              disabled={selectedVideos.size === 0 || !destinationPlaylistId}
+              className="w-full md:w-auto ml-auto"
+            >
+              {UI_TEXT.playlists.transferVideos}
+              <ArrowRight className="ml-2 h-5 w-5" />
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Spacer to prevent footer from covering content */}
+      {activeSourceId && <div className="h-24" />}
+
       {/* Empty State */}
-      {!sourcePlaylistId && (
+      {!activeSourceId && (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
             <ListVideo className="h-12 w-12 text-muted-foreground mb-4" />
             <p className="text-muted-foreground text-center">
-              Selecione uma playlist de origem para começar
+              Selecione uma playlist de origem e clique em "{UI_TEXT.playlists.listVideos}" para começar
             </p>
           </CardContent>
         </Card>
       )}
 
       {/* Transfer Dialog */}
-      {sourcePlaylistId && destinationPlaylistId && (
+      {activeSourceId && destinationPlaylistId && (
         <TransferDialog
           open={transferDialogOpen}
           onOpenChange={setTransferDialogOpen}
-          sourcePlaylistId={sourcePlaylistId}
+          sourcePlaylistId={activeSourceId}
           destinationPlaylistId={destinationPlaylistId}
           videos={videosToTransfer}
           onSuccess={handleTransferSuccess}

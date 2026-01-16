@@ -34,6 +34,7 @@ export default function ConfigPlaylistsPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [enabledMap, setEnabledMap] = useState<Record<string, boolean>>({});
+  const [showOnlyEnabled, setShowOnlyEnabled] = useState(false);
 
   const { data: playlists, isLoading } = useQuery({
     queryKey: ["playlists"],
@@ -103,6 +104,13 @@ export default function ConfigPlaylistsPage() {
     setEnabledMap(map);
   };
 
+  const filteredPlaylists = playlists?.filter((p) => {
+    if (showOnlyEnabled) {
+      return enabledMap[p.id] ?? true;
+    }
+    return true;
+  });
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -115,7 +123,17 @@ export default function ConfigPlaylistsPage() {
       </div>
 
       {/* Actions */}
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap gap-2 items-center">
+        <div className="flex items-center gap-2 mr-4 border-r pr-4">
+          <Switch
+            checked={showOnlyEnabled}
+            onCheckedChange={setShowOnlyEnabled}
+            id="show-active"
+          />
+          <label htmlFor="show-active" className="text-sm font-medium cursor-pointer">
+            {UI_TEXT.config.showOnlyActive}
+          </label>
+        </div>
         <Button variant="outline" onClick={handleEnableAll}>
           {UI_TEXT.config.enableAll}
         </Button>
@@ -146,7 +164,7 @@ export default function ConfigPlaylistsPage() {
         </div>
       ) : (
         <div className="space-y-3">
-          {playlists?.map((playlist) => (
+          {filteredPlaylists?.map((playlist) => (
             <Card key={playlist.id}>
               <CardContent className="flex items-center justify-between py-4">
                 <div className="flex-1 min-w-0">
