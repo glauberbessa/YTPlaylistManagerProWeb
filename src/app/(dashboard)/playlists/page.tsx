@@ -235,7 +235,7 @@ export default function PlaylistsPage() {
           <CardContent className="flex flex-col items-center justify-center py-12">
             <ListVideo className="h-12 w-12 text-muted-foreground mb-4" />
             <p className="text-muted-foreground text-center">
-              Selecione uma playlist de origem e clique em "{UI_TEXT.playlists.listVideos}" para começar
+              Selecione uma playlist de origem e clique em &quot;{UI_TEXT.playlists.listVideos}&quot; para começar
             </p>
           </CardContent>
         </Card>
