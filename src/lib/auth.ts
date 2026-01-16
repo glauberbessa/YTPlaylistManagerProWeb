@@ -65,6 +65,7 @@ async function refreshAccessToken(account: {
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(prisma),
   trustHost: true, // Required for Vercel deployment
+  secret: process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET,
   session: {
     strategy: "jwt", // Use JWT strategy for better serverless compatibility
     maxAge: 30 * 24 * 60 * 60, // 30 days
