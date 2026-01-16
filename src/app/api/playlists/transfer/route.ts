@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { YouTubeService } from "@/lib/youtube";
-import { checkQuotaAvailable, calculateTransferCost } from "@/lib/quota";
+import { checkQuotaAvailable } from "@/lib/quota";
+import { calculateTransferCost } from "@/lib/quota.shared";
 
 interface TransferRequest {
   sourcePlaylistId: string;

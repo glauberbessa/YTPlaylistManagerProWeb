@@ -171,7 +171,7 @@ export default function PlaylistsPage() {
       {activeSourceId && (
         <>
           {/* Filters */}
-          <VideoFilters availableLanguages={availableLanguages} />
+          <VideoFilters availableLanguages={availableLanguages} videos={videos} />
 
           {/* Videos */}
           {isLoading ? (

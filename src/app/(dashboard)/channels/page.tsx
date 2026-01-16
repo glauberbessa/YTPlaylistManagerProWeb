@@ -147,7 +147,7 @@ export default function ChannelsPage() {
       {selectedChannelId && (
         <>
           {/* Filters */}
-          <VideoFilters availableLanguages={availableLanguages} />
+          <VideoFilters availableLanguages={availableLanguages} videos={videos} />
 
           {/* Videos */}
           {isLoading ? (
