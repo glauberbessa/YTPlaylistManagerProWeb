@@ -65,6 +65,11 @@ async function refreshAccessToken(account: {
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(prisma),
   trustHost: true, // Required for Vercel deployment
+  session: {
+    strategy: "database", // Explicitly use database sessions with PrismaAdapter
+    maxAge: 30 * 24 * 60 * 60, // 30 days
+    updateAge: 24 * 60 * 60, // Update session every 24 hours
+  },
   providers: [
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID!,
@@ -111,9 +116,52 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       return true;
     },
     async session({ session, user }) {
-      console.log("[Auth/Session] Building session for user:", user.id);
+      console.log("[Auth/Session] Building session, user param:", {
+        hasUser: !!user,
+        userId: user?.id,
+        sessionUser: session?.user?.email,
+      });
 
-      // CRITICAL: Set user.id immediately before any database queries
+      // CRITICAL: Validate that user parameter exists and has an id
+      // In some edge cases (especially serverless environments), user can be undefined
+      if (!user?.id) {
+        console.error("[Auth/Session] CRITICAL: user parameter is missing or has no id!", {
+          user,
+          sessionUser: session?.user,
+        });
+
+        // Fallback: Try to fetch user by email from session
+        if (session?.user?.email) {
+          console.log("[Auth/Session] Attempting fallback: fetch user by email");
+          try {
+            const fallbackUser = await prisma.user.findUnique({
+              where: { email: session.user.email },
+              include: { accounts: true },
+            });
+
+            if (fallbackUser?.id) {
+              console.log("[Auth/Session] Fallback successful, found user:", fallbackUser.id);
+              session.user.id = fallbackUser.id;
+              session.user.youtubeChannelId = fallbackUser.youtubeChannelId;
+
+              // Also try to set the access token
+              const account = fallbackUser.accounts[0];
+              if (account?.access_token) {
+                session.accessToken = account.access_token;
+              }
+
+              return session;
+            }
+          } catch (fallbackError) {
+            console.error("[Auth/Session] Fallback failed:", fallbackError);
+          }
+        }
+
+        // Return session as-is without user.id - API routes will handle this gracefully
+        return session;
+      }
+
+      // Set user.id immediately before any database queries
       // This ensures session.user.id is always available even if DB queries fail
       session.user.id = user.id;
 
