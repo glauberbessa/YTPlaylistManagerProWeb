@@ -126,7 +126,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       // Helper function to fetch user with account data
       async function fetchUserWithAccount(whereClause: { id?: string; email?: string }) {
         try {
-          return await prisma.user.findUnique({
+          return await prisma.user.findFirst({
             where: whereClause,
             include: { accounts: true },
           });
@@ -138,11 +138,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
       // Helper function to populate session from user data
       function populateSession(
-        session: typeof import("next-auth").Session,
+        sessionData: { user: { id: string; youtubeChannelId?: string | null }; accessToken?: string | null },
         userData: { id: string; youtubeChannelId?: string | null; accounts: { access_token?: string | null; refresh_token?: string | null; expires_at?: number | null; id: string }[] }
       ) {
-        session.user.id = userData.id;
-        session.user.youtubeChannelId = userData.youtubeChannelId;
+        sessionData.user.id = userData.id;
+        sessionData.user.youtubeChannelId = userData.youtubeChannelId;
 
         const account = userData.accounts[0];
         if (account?.access_token) {
@@ -154,7 +154,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             // Return the account for async refresh
             return { needsRefresh: true, account };
           }
-          session.accessToken = account.access_token;
+          sessionData.accessToken = account.access_token;
         }
         return { needsRefresh: false, account };
       }
@@ -169,9 +169,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           if (result.needsRefresh && result.account) {
             const newToken = await refreshAccessToken({
               id: result.account.id,
-              refresh_token: result.account.refresh_token,
+              refresh_token: result.account.refresh_token ?? null,
             });
-            session.accessToken = newToken || result.account.access_token;
+            session.accessToken = newToken ?? result.account.access_token ?? null;
           }
           console.log("[Auth/Session] Session populated from user param");
           return session;
@@ -189,9 +189,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           if (result.needsRefresh && result.account) {
             const newToken = await refreshAccessToken({
               id: result.account.id,
-              refresh_token: result.account.refresh_token,
+              refresh_token: result.account.refresh_token ?? null,
             });
-            session.accessToken = newToken || result.account.access_token;
+            session.accessToken = newToken ?? result.account.access_token ?? null;
           }
           return session;
         }
@@ -224,9 +224,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             if (result.needsRefresh && result.account) {
               const newToken = await refreshAccessToken({
                 id: result.account.id,
-                refresh_token: result.account.refresh_token,
+                refresh_token: result.account.refresh_token ?? null,
               });
-              session.accessToken = newToken || result.account.access_token;
+              session.accessToken = newToken ?? result.account.access_token ?? null;
             }
             return session;
           }
