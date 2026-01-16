@@ -3,6 +3,8 @@ import { auth } from "@/lib/auth";
 import { YouTubeService } from "@/lib/youtube";
 import { prisma } from "@/lib/prisma";
 
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   try {
     const session = await auth();
