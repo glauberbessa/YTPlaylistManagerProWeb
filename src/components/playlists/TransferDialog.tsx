@@ -14,7 +14,7 @@ import { Progress } from "@/components/ui/progress";
 import { useTransfer } from "@/hooks/useTransfer";
 import { useQuota } from "@/hooks/useQuota";
 import { useToast } from "@/components/ui/use-toast";
-import { calculateTransferCost } from "@/lib/quota";
+import { calculateTransferCost } from "@/lib/quota.shared";
 import { UI_TEXT, t } from "@/lib/i18n";
 import { formatNumber } from "@/lib/utils";
 import { AlertTriangle, CheckCircle, Loader2 } from "lucide-react";

@@ -3,6 +3,8 @@ import { auth } from "@/lib/auth";
 import { YouTubeService } from "@/lib/youtube";
 import { prisma } from "@/lib/prisma";
 
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   try {
     const session = await auth();
@@ -17,11 +19,14 @@ export async function GET() {
     );
 
     const playlists = await youtubeService.getPlaylists();
+    console.log("Playlists fetched from YouTube:", playlists.length);
 
     // Buscar configurações das playlists
+    console.log("Fetching playlist configs for user:", session.user.id);
     const configs = await prisma.playlistConfig.findMany({
       where: { userId: session.user.id },
     });
+    console.log("Configs found:", configs.length);
 
     // Mesclar playlists com configurações
     const playlistsWithConfig = playlists.map((playlist) => {
@@ -30,13 +35,13 @@ export async function GET() {
         ...playlist,
         config: config
           ? {
-              id: config.id,
-              playlistId: config.playlistId,
-              title: config.title,
-              isEnabled: config.isEnabled,
-              videoCount: config.videoCount,
-              totalDurationSeconds: config.totalDurationSeconds,
-            }
+            id: config.id,
+            playlistId: config.playlistId,
+            title: config.title,
+            isEnabled: config.isEnabled,
+            videoCount: config.videoCount,
+            totalDurationSeconds: config.totalDurationSeconds,
+          }
           : undefined,
       };
     });
@@ -45,7 +50,7 @@ export async function GET() {
   } catch (error) {
     console.error("Erro ao buscar playlists:", error);
     return NextResponse.json(
-      { error: "Erro ao buscar playlists" },
+      { error: "Erro ao buscar playlists", details: error instanceof Error ? error.message : String(error) },
       { status: 500 }
     );
   }

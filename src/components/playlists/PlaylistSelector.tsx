@@ -22,8 +22,11 @@ interface PlaylistSelectorProps {
 }
 
 async function fetchPlaylists(): Promise<PlaylistWithConfig[]> {
-  const res = await fetch("/api/playlists");
-  if (!res.ok) throw new Error("Erro ao buscar playlists");
+  const res = await fetch(`/api/playlists?t=${Date.now()}`);
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Erro ${res.status}: ${text}`);
+  }
   return res.json();
 }
 
@@ -34,19 +37,15 @@ export function PlaylistSelector({
   excludeId,
   showOnlyEnabled = false,
 }: PlaylistSelectorProps) {
-  const { data: playlists, isLoading } = useQuery({
+  const {
+    data: playlists,
+    isLoading,
+    isError,
+    error,
+  } = useQuery({
     queryKey: ["playlists"],
     queryFn: fetchPlaylists,
   });
-
-  if (isLoading) {
-    return (
-      <div className="space-y-2">
-        <Skeleton className="h-4 w-24" />
-        <Skeleton className="h-10 w-full" />
-      </div>
-    );
-  }
 
   const filteredPlaylists = playlists?.filter((p) => {
     if (excludeId && p.id === excludeId) return false;
@@ -56,7 +55,9 @@ export function PlaylistSelector({
 
   return (
     <div className="space-y-2">
-      <label className="text-sm font-medium">{label}</label>
+      <label className="text-sm font-medium">
+        {label}
+      </label>
       <Select value={value || ""} onValueChange={onChange}>
         <SelectTrigger>
           <SelectValue placeholder={UI_TEXT.playlists.selectPlaylist} />

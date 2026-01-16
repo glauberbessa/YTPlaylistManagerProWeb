@@ -30,6 +30,8 @@ export class YouTubeService {
 
       await trackQuotaUsage(this.userId, "playlists.list");
 
+      console.log("YouTube API Raw Response Items:", response.data.items?.length);
+
       for (const item of response.data.items || []) {
         playlists.push({
           id: item.id!,
