@@ -7,26 +7,31 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
+    console.log("[API/playlists] Starting request...");
     const session = await auth();
 
     if (!session?.user?.id || !session.accessToken) {
+      console.log("[API/playlists] Unauthorized - no session or access token");
       return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
     }
+
+    console.log("[API/playlists] User authenticated:", session.user.id);
 
     const youtubeService = new YouTubeService(
       session.accessToken,
       session.user.id
     );
 
+    console.log("[API/playlists] Fetching playlists from YouTube...");
     const playlists = await youtubeService.getPlaylists();
-    console.log("Playlists fetched from YouTube:", playlists.length);
+    console.log("[API/playlists] Playlists fetched from YouTube:", playlists.length);
 
     // Buscar configurações das playlists
-    console.log("Fetching playlist configs for user:", session.user.id);
+    console.log("[API/playlists] Fetching playlist configs from database...");
     const configs = await prisma.playlistConfig.findMany({
       where: { userId: session.user.id },
     });
-    console.log("Configs found:", configs.length);
+    console.log("[API/playlists] Configs found:", configs.length);
 
     // Mesclar playlists com configurações
     const playlistsWithConfig = playlists.map((playlist) => {
@@ -49,9 +54,10 @@ export async function GET() {
     // Ordenar playlists por título (A-Z)
     playlistsWithConfig.sort((a, b) => a.title.localeCompare(b.title));
 
+    console.log("[API/playlists] Returning", playlistsWithConfig.length, "playlists");
     return NextResponse.json(playlistsWithConfig);
   } catch (error) {
-    console.error("Erro ao buscar playlists:", error);
+    console.error("[API/playlists] Error:", error);
     return NextResponse.json(
       { error: "Erro ao buscar playlists", details: error instanceof Error ? error.message : String(error) },
       { status: 500 }

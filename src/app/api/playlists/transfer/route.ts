@@ -4,6 +4,8 @@ import { YouTubeService } from "@/lib/youtube";
 import { checkQuotaAvailable } from "@/lib/quota";
 import { calculateTransferCost } from "@/lib/quota.shared";
 
+export const dynamic = "force-dynamic";
+
 interface TransferRequest {
   sourcePlaylistId: string;
   destinationPlaylistId: string;

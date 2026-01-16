@@ -47,23 +47,56 @@ export function PlaylistSelector({
     queryFn: fetchPlaylists,
   });
 
+  if (isLoading) {
+    return (
+      <div className="space-y-2">
+        {label && <label className="text-sm font-medium">{label}</label>}
+        <Skeleton className="h-10 w-full" />
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="space-y-2">
+        {label && <label className="text-sm font-medium">{label}</label>}
+        <div className="text-sm text-destructive p-2 border border-destructive/50 rounded-md">
+          Erro ao carregar playlists: {error?.message || "Erro desconhecido"}
+        </div>
+      </div>
+    );
+  }
+
   const filteredPlaylists = playlists?.filter((p) => {
     if (excludeId && p.id === excludeId) return false;
     if (showOnlyEnabled && p.config?.isEnabled === false) return false;
     return true;
   });
 
+  if (!filteredPlaylists || filteredPlaylists.length === 0) {
+    return (
+      <div className="space-y-2">
+        {label && <label className="text-sm font-medium">{label}</label>}
+        <div className="text-sm text-muted-foreground p-2 border border-dashed rounded-md">
+          Nenhuma playlist encontrada. Verifique se você tem playlists no YouTube.
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-2">
-      <label className="text-sm font-medium">
-        {label}
-      </label>
+      {label && (
+        <label className="text-sm font-medium">
+          {label}
+        </label>
+      )}
       <Select value={value || ""} onValueChange={onChange}>
         <SelectTrigger>
           <SelectValue placeholder={UI_TEXT.playlists.selectPlaylist} />
         </SelectTrigger>
         <SelectContent>
-          {filteredPlaylists?.map((playlist) => (
+          {filteredPlaylists.map((playlist) => (
             <SelectItem key={playlist.id} value={playlist.id}>
               <div className="flex items-center justify-between gap-4">
                 <span className="truncate">{playlist.title}</span>

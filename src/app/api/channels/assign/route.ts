@@ -4,6 +4,8 @@ import { YouTubeService } from "@/lib/youtube";
 import { checkQuotaAvailable } from "@/lib/quota";
 import { calculateAssignCost } from "@/lib/quota.shared";
 
+export const dynamic = "force-dynamic";
+
 interface AssignRequest {
   playlistId: string;
   videoIds: string[];
