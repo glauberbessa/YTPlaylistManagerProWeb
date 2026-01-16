@@ -118,9 +118,24 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     async jwt({ token, user, account }) {
       // Initial sign in - persist user data in token
       if (user) {
-        console.log("[Auth/JWT] Initial sign in, persisting user data:", user.id);
-        token.userId = user.id;
-        token.email = user.email;
+        console.log("[Auth/JWT] Initial sign in, user object:", {
+          hasId: !!user.id,
+          hasEmail: !!user.email,
+          id: user.id,
+        });
+
+        if (user.id) {
+          token.userId = user.id;
+        }
+        if (user.email) {
+          token.email = user.email;
+        }
+        if (user.name) {
+          token.name = user.name;
+        }
+        if (user.image) {
+          token.picture = user.image;
+        }
       }
 
       // Persist account data on initial sign in
@@ -130,6 +145,28 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.refreshToken = account.refresh_token;
         token.expiresAt = account.expires_at;
         token.accountId = account.providerAccountId;
+      }
+
+      // If we still don't have userId but have email, try to fetch from DB
+      if (!token.userId && token.email) {
+        console.log("[Auth/JWT] No userId in token, trying to fetch by email:", token.email);
+        try {
+          const dbUser = await prisma.user.findUnique({
+            where: { email: token.email as string },
+          });
+          if (dbUser) {
+            console.log("[Auth/JWT] Found user by email, setting userId:", dbUser.id);
+            token.userId = dbUser.id;
+          }
+        } catch (error) {
+          console.error("[Auth/JWT] Error fetching user by email:", error);
+        }
+      }
+
+      // Fallback: use token.sub as userId if still missing
+      if (!token.userId && token.sub) {
+        console.log("[Auth/JWT] Using token.sub as userId fallback:", token.sub);
+        token.userId = token.sub;
       }
 
       // Check if token needs refresh
@@ -173,7 +210,25 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         hasUserId: !!token.userId,
         hasEmail: !!token.email,
         hasAccessToken: !!token.accessToken,
+        tokenSub: token.sub,
       });
+
+      // CRITICAL: Ensure session.user object exists before assigning properties
+      // In NextAuth v5 with JWT strategy, session.user may be undefined or empty
+      if (!session.user) {
+        session.user = {
+          id: "",
+          name: null,
+          email: null,
+          image: null,
+          youtubeChannelId: null,
+        };
+      }
+
+      // Populate basic user info from token
+      if (token.name) session.user.name = token.name as string;
+      if (token.email) session.user.email = token.email as string;
+      if (token.picture) session.user.image = token.picture as string;
 
       // Helper function to fetch user with account data
       async function fetchUserWithAccount(whereClause: { id?: string; email?: string }) {
@@ -206,6 +261,27 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
         console.log("[Auth/Session] Session populated from JWT token");
         return session;
+      }
+
+      // STRATEGY 1.5: Use token.sub as userId if userId is missing
+      // In NextAuth v5 with JWT strategy, token.sub often contains the user ID
+      if (token.sub && !token.userId) {
+        console.log("[Auth/Session] Using token.sub as userId:", token.sub);
+        const subUser = await fetchUserWithAccount({ id: token.sub });
+        if (subUser) {
+          session.user.id = subUser.id;
+          session.user.youtubeChannelId = subUser.youtubeChannelId;
+          if (token.accessToken) {
+            session.accessToken = token.accessToken as string;
+          } else {
+            const account = subUser.accounts[0];
+            if (account?.access_token) {
+              session.accessToken = account.access_token;
+            }
+          }
+          console.log("[Auth/Session] Session populated from token.sub");
+          return session;
+        }
       }
 
       // STRATEGY 2: Fallback - fetch by email from token or session
