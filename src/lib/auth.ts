@@ -66,7 +66,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(prisma),
   trustHost: true, // Required for Vercel deployment
   session: {
-    strategy: "database", // Explicitly use database sessions with PrismaAdapter
+    strategy: "jwt", // Use JWT strategy for better serverless compatibility
     maxAge: 30 * 24 * 60 * 60, // 30 days
     updateAge: 24 * 60 * 60, // Update session every 24 hours
   },
@@ -115,12 +115,64 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       }
       return true;
     },
-    async session({ session, user, token }) {
-      console.log("[Auth/Session] Building session, params:", {
-        hasUser: !!user,
-        userId: user?.id,
-        sessionUserEmail: session?.user?.email,
-        hasToken: !!token,
+    async jwt({ token, user, account }) {
+      // Initial sign in - persist user data in token
+      if (user) {
+        console.log("[Auth/JWT] Initial sign in, persisting user data:", user.id);
+        token.userId = user.id;
+        token.email = user.email;
+      }
+
+      // Persist account data on initial sign in
+      if (account) {
+        console.log("[Auth/JWT] Storing account tokens in JWT");
+        token.accessToken = account.access_token;
+        token.refreshToken = account.refresh_token;
+        token.expiresAt = account.expires_at;
+        token.accountId = account.providerAccountId;
+      }
+
+      // Check if token needs refresh
+      if (token.expiresAt && typeof token.expiresAt === 'number') {
+        const now = Math.floor(Date.now() / 1000);
+        const isExpired = token.expiresAt < now - 60;
+
+        if (isExpired && token.refreshToken) {
+          console.log("[Auth/JWT] Token expired, refreshing...");
+          try {
+            // Find the account in DB to get its ID for update
+            const dbAccount = await prisma.account.findFirst({
+              where: {
+                providerAccountId: token.accountId as string,
+                provider: "google",
+              },
+            });
+
+            if (dbAccount) {
+              const newAccessToken = await refreshAccessToken({
+                id: dbAccount.id,
+                refresh_token: token.refreshToken as string,
+              });
+
+              if (newAccessToken) {
+                token.accessToken = newAccessToken;
+                // Update expiry (Google tokens typically last 1 hour)
+                token.expiresAt = Math.floor(Date.now() / 1000) + 3600;
+              }
+            }
+          } catch (error) {
+            console.error("[Auth/JWT] Token refresh failed:", error);
+          }
+        }
+      }
+
+      return token;
+    },
+    async session({ session, token }) {
+      console.log("[Auth/Session] Building session from JWT, token has:", {
+        hasUserId: !!token.userId,
+        hasEmail: !!token.email,
+        hasAccessToken: !!token.accessToken,
       });
 
       // Helper function to fetch user with account data
@@ -136,103 +188,100 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         }
       }
 
-      // Helper function to populate session from user data
-      function populateSession(
-        sessionData: { user: { id: string; youtubeChannelId?: string | null }; accessToken?: string | null },
-        userData: { id: string; youtubeChannelId?: string | null; accounts: { access_token?: string | null; refresh_token?: string | null; expires_at?: number | null; id: string }[] }
-      ) {
-        sessionData.user.id = userData.id;
-        sessionData.user.youtubeChannelId = userData.youtubeChannelId;
+      // STRATEGY 1: Use userId from JWT token (primary method)
+      if (token.userId) {
+        console.log("[Auth/Session] Using userId from JWT:", token.userId);
+        session.user.id = token.userId as string;
 
-        const account = userData.accounts[0];
-        if (account?.access_token) {
-          const now = Math.floor(Date.now() / 1000);
-          const isExpired = (account.expires_at || 0) < now - 60;
-
-          if (isExpired && account.refresh_token) {
-            console.log("[Auth/Session] Token expired, will refresh...");
-            // Return the account for async refresh
-            return { needsRefresh: true, account };
-          }
-          sessionData.accessToken = account.access_token;
-        }
-        return { needsRefresh: false, account };
-      }
-
-      // STRATEGY 1: Use the user parameter directly (normal case)
-      if (user?.id) {
-        console.log("[Auth/Session] Using user from callback param:", user.id);
-        const dbUser = await fetchUserWithAccount({ id: user.id });
-
+        // Fetch additional user data from DB
+        const dbUser = await fetchUserWithAccount({ id: token.userId as string });
         if (dbUser) {
-          const result = populateSession(session, dbUser);
-          if (result.needsRefresh && result.account) {
-            const newToken = await refreshAccessToken({
-              id: result.account.id,
-              refresh_token: result.account.refresh_token ?? null,
-            });
-            session.accessToken = newToken ?? result.account.access_token ?? null;
-          }
-          console.log("[Auth/Session] Session populated from user param");
-          return session;
+          session.user.youtubeChannelId = dbUser.youtubeChannelId;
         }
+
+        // Use access token from JWT
+        if (token.accessToken) {
+          session.accessToken = token.accessToken as string;
+        }
+
+        console.log("[Auth/Session] Session populated from JWT token");
+        return session;
       }
 
-      // STRATEGY 2: Fallback - fetch by email
-      console.log("[Auth/Session] User param missing, trying email fallback...");
-      if (session?.user?.email) {
-        const emailUser = await fetchUserWithAccount({ email: session.user.email });
+      // STRATEGY 2: Fallback - fetch by email from token or session
+      const email = (token.email as string) || session?.user?.email;
+      if (email) {
+        console.log("[Auth/Session] Trying email fallback:", email);
+        const emailUser = await fetchUserWithAccount({ email });
 
         if (emailUser) {
           console.log("[Auth/Session] Found user by email:", emailUser.id);
-          const result = populateSession(session, emailUser);
-          if (result.needsRefresh && result.account) {
-            const newToken = await refreshAccessToken({
-              id: result.account.id,
-              refresh_token: result.account.refresh_token ?? null,
-            });
-            session.accessToken = newToken ?? result.account.access_token ?? null;
+          session.user.id = emailUser.id;
+          session.user.youtubeChannelId = emailUser.youtubeChannelId;
+
+          // Get access token from JWT or from DB account
+          if (token.accessToken) {
+            session.accessToken = token.accessToken as string;
+          } else {
+            const account = emailUser.accounts[0];
+            if (account?.access_token) {
+              const now = Math.floor(Date.now() / 1000);
+              const isExpired = (account.expires_at || 0) < now - 60;
+
+              if (isExpired && account.refresh_token) {
+                const newToken = await refreshAccessToken({
+                  id: account.id,
+                  refresh_token: account.refresh_token,
+                });
+                session.accessToken = newToken ?? account.access_token ?? null;
+              } else {
+                session.accessToken = account.access_token;
+              }
+            }
           }
           return session;
         }
       }
 
-      // STRATEGY 3: Last resort - try to find any active session for this user
-      console.log("[Auth/Session] Email fallback failed, trying session lookup...");
+      // STRATEGY 3: Last resort - try to find any recent user with Google account
+      console.log("[Auth/Session] Email fallback failed, trying recent user lookup...");
       try {
-        // Find sessions that haven't expired yet
-        const activeSessions = await prisma.session.findMany({
+        const recentUser = await prisma.user.findFirst({
           where: {
-            expires: { gt: new Date() },
-          },
-          include: {
-            user: {
-              include: { accounts: true },
+            accounts: {
+              some: {
+                provider: "google",
+              },
             },
           },
-          orderBy: { expires: 'desc' },
-          take: 1,
+          include: { accounts: true },
+          orderBy: { updatedAt: 'desc' },
         });
 
-        if (activeSessions.length > 0 && activeSessions[0].user) {
-          const sessionUser = activeSessions[0].user;
-          console.log("[Auth/Session] Found user from active session:", sessionUser.id);
+        if (recentUser) {
+          console.log("[Auth/Session] Found recent user:", recentUser.id);
+          session.user.id = recentUser.id;
+          session.user.youtubeChannelId = recentUser.youtubeChannelId;
 
-          // Verify this matches the session email if available
-          if (!session?.user?.email || sessionUser.email === session.user.email) {
-            const result = populateSession(session, sessionUser);
-            if (result.needsRefresh && result.account) {
+          const account = recentUser.accounts[0];
+          if (account?.access_token) {
+            const now = Math.floor(Date.now() / 1000);
+            const isExpired = (account.expires_at || 0) < now - 60;
+
+            if (isExpired && account.refresh_token) {
               const newToken = await refreshAccessToken({
-                id: result.account.id,
-                refresh_token: result.account.refresh_token ?? null,
+                id: account.id,
+                refresh_token: account.refresh_token,
               });
-              session.accessToken = newToken ?? result.account.access_token ?? null;
+              session.accessToken = newToken ?? account.access_token ?? null;
+            } else {
+              session.accessToken = account.access_token;
             }
-            return session;
           }
+          return session;
         }
       } catch (error) {
-        console.error("[Auth/Session] Session lookup failed:", error);
+        console.error("[Auth/Session] Recent user lookup failed:", error);
       }
 
       console.error("[Auth/Session] All strategies failed - returning incomplete session");
