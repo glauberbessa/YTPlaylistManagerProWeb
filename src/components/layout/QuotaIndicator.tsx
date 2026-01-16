@@ -20,7 +20,7 @@ interface QuotaStatus {
 }
 
 async function fetchQuotaStatus(): Promise<QuotaStatus> {
-  const res = await fetch("/api/quota");
+  const res = await fetch("/api/quota", { credentials: "include" });
   if (!res.ok) throw new Error("Erro ao buscar quota");
   return res.json();
 }

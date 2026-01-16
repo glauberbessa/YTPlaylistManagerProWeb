@@ -4,13 +4,13 @@ import { useQuery } from "@tanstack/react-query";
 import { QuotaStatus, QuotaHistoryItem } from "@/types/quota";
 
 async function fetchQuotaStatus(): Promise<QuotaStatus> {
-  const res = await fetch("/api/quota");
+  const res = await fetch("/api/quota", { credentials: "include" });
   if (!res.ok) throw new Error("Erro ao buscar quota");
   return res.json();
 }
 
 async function fetchQuotaHistory(): Promise<QuotaHistoryItem[]> {
-  const res = await fetch("/api/quota/history");
+  const res = await fetch("/api/quota/history", { credentials: "include" });
   if (!res.ok) throw new Error("Erro ao buscar histórico");
   return res.json();
 }

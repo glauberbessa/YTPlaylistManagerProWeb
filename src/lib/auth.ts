@@ -21,8 +21,10 @@ async function refreshAccessToken(account: {
   id: string;
   refresh_token: string | null;
 }): Promise<string | null> {
+  console.log("[Auth] Attempting to refresh access token for account:", account.id);
+
   if (!account.refresh_token) {
-    console.error("No refresh token available");
+    console.error("[Auth] No refresh token available for account:", account.id);
     return null;
   }
 
@@ -33,9 +35,11 @@ async function refreshAccessToken(account: {
     );
     oauth2Client.setCredentials({ refresh_token: account.refresh_token });
 
+    console.log("[Auth] Calling Google OAuth to refresh token...");
     const { credentials } = await oauth2Client.refreshAccessToken();
 
     if (credentials.access_token) {
+      console.log("[Auth] Got new access token, updating database...");
       await prisma.account.update({
         where: { id: account.id },
         data: {
@@ -46,11 +50,13 @@ async function refreshAccessToken(account: {
         },
       });
 
-      console.log("Access token refreshed successfully");
+      console.log("[Auth] Access token refreshed successfully");
       return credentials.access_token;
+    } else {
+      console.error("[Auth] Google returned no access_token in credentials");
     }
   } catch (error) {
-    console.error("Error refreshing access token:", error);
+    console.error("[Auth] Error refreshing access token:", error);
   }
 
   return null;
@@ -58,6 +64,7 @@ async function refreshAccessToken(account: {
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(prisma),
+  trustHost: true, // Required for Vercel deployment
   providers: [
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID!,
@@ -104,10 +111,19 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       return true;
     },
     async session({ session, user }) {
+      console.log("[Auth/Session] Building session for user:", user.id);
+
       const dbUser = await prisma.user.findUnique({
         where: { id: user.id },
         include: { accounts: true },
       });
+
+      if (!dbUser) {
+        console.error("[Auth/Session] User not found in database:", user.id);
+        return session;
+      }
+
+      console.log("[Auth/Session] User found, accounts count:", dbUser.accounts.length);
 
       session.user.id = user.id;
       session.user.youtubeChannelId = dbUser?.youtubeChannelId;
@@ -118,16 +134,34 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const expiresAt = account.expires_at || 0;
         const isExpired = expiresAt < now - 60;
 
+        console.log("[Auth/Session] Token status:", {
+          hasAccessToken: !!account.access_token,
+          hasRefreshToken: !!account.refresh_token,
+          expiresAt,
+          now,
+          isExpired,
+        });
+
         if (isExpired && account.refresh_token) {
+          console.log("[Auth/Session] Token expired, refreshing...");
           const newAccessToken = await refreshAccessToken({
             id: account.id,
             refresh_token: account.refresh_token,
           });
           session.accessToken = newAccessToken || account.access_token;
+          console.log("[Auth/Session] After refresh, hasAccessToken:", !!session.accessToken);
         } else {
           session.accessToken = account.access_token;
         }
+      } else {
+        console.error("[Auth/Session] No account found for user:", user.id);
       }
+
+      console.log("[Auth/Session] Final session state:", {
+        hasUserId: !!session.user.id,
+        hasAccessToken: !!session.accessToken,
+        hasYoutubeChannelId: !!session.user.youtubeChannelId,
+      });
 
       return session;
     },

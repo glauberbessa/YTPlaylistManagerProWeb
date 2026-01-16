@@ -22,7 +22,9 @@ interface PlaylistSelectorProps {
 }
 
 async function fetchPlaylists(): Promise<PlaylistWithConfig[]> {
-  const res = await fetch(`/api/playlists?t=${Date.now()}`);
+  const res = await fetch(`/api/playlists?t=${Date.now()}`, {
+    credentials: "include",
+  });
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`Erro ${res.status}: ${text}`);

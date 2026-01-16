@@ -27,6 +27,7 @@ async function transferVideos(data: TransferRequest): Promise<TransferResponse> 
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
+    credentials: "include",
   });
 
   if (!res.ok) {
@@ -77,6 +78,7 @@ async function assignVideos(data: AssignRequest): Promise<AssignResponse> {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
+    credentials: "include",
   });
 
   if (!res.ok) {
