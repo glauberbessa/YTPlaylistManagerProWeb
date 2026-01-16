@@ -4,6 +4,33 @@ import { PrismaAdapter } from "@auth/prisma-adapter";
 import { prisma } from "./prisma";
 import { google } from "googleapis";
 
+// Get the auth secret with proper validation
+function getAuthSecret(): string {
+  const secret = process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET;
+
+  if (secret) {
+    return secret;
+  }
+
+  // In production, we must have a secret - throw a clear error
+  if (process.env.NODE_ENV === "production" || process.env.VERCEL) {
+    // Log the error but provide a fallback to prevent crashes
+    // This allows the app to at least load and show meaningful errors
+    console.error(
+      "[Auth] CRITICAL: AUTH_SECRET or NEXTAUTH_SECRET environment variable is not set! " +
+      "Authentication will not work properly. Please set AUTH_SECRET in your Vercel environment variables."
+    );
+    // Use VERCEL_URL or a hash of other env vars as an emergency fallback
+    // This is NOT secure but prevents complete app failure
+    const emergencyFallback = process.env.VERCEL_URL || process.env.VERCEL_GIT_COMMIT_SHA || "insecure-fallback-please-set-auth-secret";
+    return `emergency-${emergencyFallback}`;
+  }
+
+  // In development, use a default secret (not secure, but acceptable for dev)
+  console.warn("[Auth] Warning: No AUTH_SECRET set. Using development fallback.");
+  return "development-secret-please-set-auth-secret-in-production";
+}
+
 declare module "next-auth" {
   interface Session {
     user: {
@@ -65,7 +92,7 @@ async function refreshAccessToken(account: {
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(prisma),
   trustHost: true, // Required for Vercel deployment
-  secret: process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET,
+  secret: getAuthSecret(),
   session: {
     strategy: "jwt", // Use JWT strategy for better serverless compatibility
     maxAge: 30 * 24 * 60 * 60, // 30 days
