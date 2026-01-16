@@ -113,10 +113,22 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     async session({ session, user }) {
       console.log("[Auth/Session] Building session for user:", user.id);
 
-      const dbUser = await prisma.user.findUnique({
-        where: { id: user.id },
-        include: { accounts: true },
-      });
+      // CRITICAL: Set user.id immediately before any database queries
+      // This ensures session.user.id is always available even if DB queries fail
+      session.user.id = user.id;
+
+      let dbUser;
+      try {
+        dbUser = await prisma.user.findUnique({
+          where: { id: user.id },
+          include: { accounts: true },
+        });
+      } catch (error) {
+        console.error("[Auth/Session] Error fetching user from database:", error);
+        // Return session with user.id set (already done above)
+        // accessToken will be missing, but at least the session is partially valid
+        return session;
+      }
 
       if (!dbUser) {
         console.error("[Auth/Session] User not found in database:", user.id);
@@ -125,7 +137,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
       console.log("[Auth/Session] User found, accounts count:", dbUser.accounts.length);
 
-      session.user.id = user.id;
       session.user.youtubeChannelId = dbUser?.youtubeChannelId;
 
       const account = dbUser?.accounts[0];
