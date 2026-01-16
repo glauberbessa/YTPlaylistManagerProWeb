@@ -246,11 +246,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (!session.user) {
         session.user = {
           id: "",
-          name: null,
-          email: null,
-          image: null,
-          youtubeChannelId: null,
-        };
+        } as typeof session.user;
       }
 
       // Populate basic user info from token
