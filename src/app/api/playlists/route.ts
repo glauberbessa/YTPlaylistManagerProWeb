@@ -10,9 +10,35 @@ export async function GET() {
     console.log("[API/playlists] Starting request...");
     const session = await auth();
 
+    console.log("[API/playlists] Session check:", {
+      hasSession: !!session,
+      hasUser: !!session?.user,
+      hasUserId: !!session?.user?.id,
+      hasAccessToken: !!session?.accessToken,
+    });
+
     if (!session?.user?.id || !session.accessToken) {
-      console.log("[API/playlists] Unauthorized - no session or access token");
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+      const reason = !session
+        ? "no_session"
+        : !session.user?.id
+          ? "no_user_id"
+          : "no_access_token";
+
+      console.log("[API/playlists] Unauthorized - reason:", reason);
+
+      return NextResponse.json(
+        {
+          error: "Não autorizado",
+          reason,
+          hint:
+            reason === "no_session"
+              ? "Sessão não encontrada. Verifique se está logado e se os cookies estão sendo enviados."
+              : reason === "no_access_token"
+                ? "Access token ausente. Pode ser necessário fazer login novamente."
+                : "ID do usuário ausente na sessão.",
+        },
+        { status: 401 }
+      );
     }
 
     console.log("[API/playlists] User authenticated:", session.user.id);
