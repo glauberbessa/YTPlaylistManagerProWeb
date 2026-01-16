@@ -115,113 +115,127 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       }
       return true;
     },
-    async session({ session, user }) {
-      console.log("[Auth/Session] Building session, user param:", {
+    async session({ session, user, token }) {
+      console.log("[Auth/Session] Building session, params:", {
         hasUser: !!user,
         userId: user?.id,
-        sessionUser: session?.user?.email,
+        sessionUserEmail: session?.user?.email,
+        hasToken: !!token,
       });
 
-      // CRITICAL: Validate that user parameter exists and has an id
-      // In some edge cases (especially serverless environments), user can be undefined
-      if (!user?.id) {
-        console.error("[Auth/Session] CRITICAL: user parameter is missing or has no id!", {
-          user,
-          sessionUser: session?.user,
-        });
-
-        // Fallback: Try to fetch user by email from session
-        if (session?.user?.email) {
-          console.log("[Auth/Session] Attempting fallback: fetch user by email");
-          try {
-            const fallbackUser = await prisma.user.findUnique({
-              where: { email: session.user.email },
-              include: { accounts: true },
-            });
-
-            if (fallbackUser?.id) {
-              console.log("[Auth/Session] Fallback successful, found user:", fallbackUser.id);
-              session.user.id = fallbackUser.id;
-              session.user.youtubeChannelId = fallbackUser.youtubeChannelId;
-
-              // Also try to set the access token
-              const account = fallbackUser.accounts[0];
-              if (account?.access_token) {
-                session.accessToken = account.access_token;
-              }
-
-              return session;
-            }
-          } catch (fallbackError) {
-            console.error("[Auth/Session] Fallback failed:", fallbackError);
-          }
-        }
-
-        // Return session as-is without user.id - API routes will handle this gracefully
-        return session;
-      }
-
-      // Set user.id immediately before any database queries
-      // This ensures session.user.id is always available even if DB queries fail
-      session.user.id = user.id;
-
-      let dbUser;
-      try {
-        dbUser = await prisma.user.findUnique({
-          where: { id: user.id },
-          include: { accounts: true },
-        });
-      } catch (error) {
-        console.error("[Auth/Session] Error fetching user from database:", error);
-        // Return session with user.id set (already done above)
-        // accessToken will be missing, but at least the session is partially valid
-        return session;
-      }
-
-      if (!dbUser) {
-        console.error("[Auth/Session] User not found in database:", user.id);
-        return session;
-      }
-
-      console.log("[Auth/Session] User found, accounts count:", dbUser.accounts.length);
-
-      session.user.youtubeChannelId = dbUser?.youtubeChannelId;
-
-      const account = dbUser?.accounts[0];
-      if (account) {
-        const now = Math.floor(Date.now() / 1000);
-        const expiresAt = account.expires_at || 0;
-        const isExpired = expiresAt < now - 60;
-
-        console.log("[Auth/Session] Token status:", {
-          hasAccessToken: !!account.access_token,
-          hasRefreshToken: !!account.refresh_token,
-          expiresAt,
-          now,
-          isExpired,
-        });
-
-        if (isExpired && account.refresh_token) {
-          console.log("[Auth/Session] Token expired, refreshing...");
-          const newAccessToken = await refreshAccessToken({
-            id: account.id,
-            refresh_token: account.refresh_token,
+      // Helper function to fetch user with account data
+      async function fetchUserWithAccount(whereClause: { id?: string; email?: string }) {
+        try {
+          return await prisma.user.findUnique({
+            where: whereClause,
+            include: { accounts: true },
           });
-          session.accessToken = newAccessToken || account.access_token;
-          console.log("[Auth/Session] After refresh, hasAccessToken:", !!session.accessToken);
-        } else {
+        } catch (error) {
+          console.error("[Auth/Session] DB query failed:", error);
+          return null;
+        }
+      }
+
+      // Helper function to populate session from user data
+      function populateSession(
+        session: typeof import("next-auth").Session,
+        userData: { id: string; youtubeChannelId?: string | null; accounts: { access_token?: string | null; refresh_token?: string | null; expires_at?: number | null; id: string }[] }
+      ) {
+        session.user.id = userData.id;
+        session.user.youtubeChannelId = userData.youtubeChannelId;
+
+        const account = userData.accounts[0];
+        if (account?.access_token) {
+          const now = Math.floor(Date.now() / 1000);
+          const isExpired = (account.expires_at || 0) < now - 60;
+
+          if (isExpired && account.refresh_token) {
+            console.log("[Auth/Session] Token expired, will refresh...");
+            // Return the account for async refresh
+            return { needsRefresh: true, account };
+          }
           session.accessToken = account.access_token;
         }
-      } else {
-        console.error("[Auth/Session] No account found for user:", user.id);
+        return { needsRefresh: false, account };
       }
 
-      console.log("[Auth/Session] Final session state:", {
-        hasUserId: !!session.user.id,
-        hasAccessToken: !!session.accessToken,
-        hasYoutubeChannelId: !!session.user.youtubeChannelId,
-      });
+      // STRATEGY 1: Use the user parameter directly (normal case)
+      if (user?.id) {
+        console.log("[Auth/Session] Using user from callback param:", user.id);
+        const dbUser = await fetchUserWithAccount({ id: user.id });
 
+        if (dbUser) {
+          const result = populateSession(session, dbUser);
+          if (result.needsRefresh && result.account) {
+            const newToken = await refreshAccessToken({
+              id: result.account.id,
+              refresh_token: result.account.refresh_token,
+            });
+            session.accessToken = newToken || result.account.access_token;
+          }
+          console.log("[Auth/Session] Session populated from user param");
+          return session;
+        }
+      }
+
+      // STRATEGY 2: Fallback - fetch by email
+      console.log("[Auth/Session] User param missing, trying email fallback...");
+      if (session?.user?.email) {
+        const emailUser = await fetchUserWithAccount({ email: session.user.email });
+
+        if (emailUser) {
+          console.log("[Auth/Session] Found user by email:", emailUser.id);
+          const result = populateSession(session, emailUser);
+          if (result.needsRefresh && result.account) {
+            const newToken = await refreshAccessToken({
+              id: result.account.id,
+              refresh_token: result.account.refresh_token,
+            });
+            session.accessToken = newToken || result.account.access_token;
+          }
+          return session;
+        }
+      }
+
+      // STRATEGY 3: Last resort - try to find any active session for this user
+      console.log("[Auth/Session] Email fallback failed, trying session lookup...");
+      try {
+        // Find sessions that haven't expired yet
+        const activeSessions = await prisma.session.findMany({
+          where: {
+            expires: { gt: new Date() },
+          },
+          include: {
+            user: {
+              include: { accounts: true },
+            },
+          },
+          orderBy: { expires: 'desc' },
+          take: 1,
+        });
+
+        if (activeSessions.length > 0 && activeSessions[0].user) {
+          const sessionUser = activeSessions[0].user;
+          console.log("[Auth/Session] Found user from active session:", sessionUser.id);
+
+          // Verify this matches the session email if available
+          if (!session?.user?.email || sessionUser.email === session.user.email) {
+            const result = populateSession(session, sessionUser);
+            if (result.needsRefresh && result.account) {
+              const newToken = await refreshAccessToken({
+                id: result.account.id,
+                refresh_token: result.account.refresh_token,
+              });
+              session.accessToken = newToken || result.account.access_token;
+            }
+            return session;
+          }
+        }
+      } catch (error) {
+        console.error("[Auth/Session] Session lookup failed:", error);
+      }
+
+      console.error("[Auth/Session] All strategies failed - returning incomplete session");
       return session;
     },
   },
