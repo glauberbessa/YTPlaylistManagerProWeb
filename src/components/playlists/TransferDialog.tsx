@@ -61,6 +61,11 @@ export function TransferDialog({
         });
         onSuccess();
         onOpenChange(false);
+        // Open the destination playlist on YouTube
+        window.open(
+          `https://www.youtube.com/playlist?list=${destinationPlaylistId}`,
+          "_blank"
+        );
       } else {
         toast({
           title: UI_TEXT.general.error,
