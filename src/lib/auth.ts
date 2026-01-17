@@ -129,16 +129,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         secure: useSecureCookies,
       },
     },
-    pkceCodeVerifier: {
-      name: `${cookiePrefix}next-auth.pkce.code_verifier`,
-      options: {
-        httpOnly: true,
-        sameSite: "lax",
-        path: "/",
-        secure: useSecureCookies,
-        maxAge: 60 * 15, // 15 minutes
-      },
-    },
+    // NOTE: pkceCodeVerifier cookie removed - PKCE is disabled for Google OAuth
+    // Having this cookie config can cause Auth.js to still attempt PKCE even when disabled
     state: {
       name: `${cookiePrefix}next-auth.state`,
       options: {
@@ -162,9 +154,14 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           prompt: "consent",
         },
       },
-      // Disable PKCE and use only state verification to fix "Invalid code verifier" error
-      // in serverless environments. Google OAuth supports but doesn't require PKCE.
-      // The state parameter still provides CSRF protection.
+      // IMPORTANT: PKCE is disabled to fix "Invalid code verifier" error in serverless environments.
+      // In serverless/edge environments, the PKCE code_verifier cookie can be lost between
+      // the authorization request and callback due to cold starts or cookie handling issues.
+      // Google OAuth supports but doesn't require PKCE - the state parameter provides CSRF protection.
+      // Requirements for this fix:
+      // - Use checks: ["state"] (not ["pkce"] or ["state", "pkce"])
+      // - Remove pkceCodeVerifier cookie configuration from cookies object above
+      // - Use next-auth >= 5.0.0-beta.25 which has improved PKCE handling
       checks: ["state"],
     }),
   ],
