@@ -93,10 +93,49 @@ async function refreshAccessToken(account: {
 const useSecureCookies = process.env.NODE_ENV === "production";
 const cookiePrefix = useSecureCookies ? "__Secure-" : "";
 
+// Debug logging helper
+function logAuthConfig() {
+  console.log(`\n${"#".repeat(80)}`);
+  console.log(`[AUTH-CONFIG] NextAuth Configuration Initialized`);
+  console.log(`${"#".repeat(80)}`);
+  console.log(`[AUTH-CONFIG] Cookie Settings:`);
+  console.log(`  - useSecureCookies: ${useSecureCookies}`);
+  console.log(`  - cookiePrefix: "${cookiePrefix}"`);
+  console.log(`  - Expected PKCE cookie name: ${cookiePrefix}next-auth.pkce.code_verifier`);
+  console.log(`  - Expected state cookie name: ${cookiePrefix}next-auth.state`);
+  console.log(`[AUTH-CONFIG] Provider Settings:`);
+  console.log(`  - Provider: Google OAuth`);
+  console.log(`  - Checks: ["state"] (PKCE disabled)`);
+  console.log(`  - Session Strategy: JWT`);
+  console.log(`${"#".repeat(80)}\n`);
+}
+
+// Log config on module load
+logAuthConfig();
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(prisma),
   trustHost: true, // Required for Vercel deployment
   secret: getAuthSecret(),
+  debug: process.env.NODE_ENV === "development" || process.env.AUTH_DEBUG === "true",
+  logger: {
+    error(code, ...message) {
+      console.log(`\n${"!".repeat(80)}`);
+      console.log(`[AUTH-INTERNAL-ERROR] Code: ${code}`);
+      console.log(`${"!".repeat(80)}`);
+      console.log(`[AUTH-INTERNAL-ERROR] Message:`, ...message);
+      if (typeof code === 'object' && code !== null) {
+        console.log(`[AUTH-INTERNAL-ERROR] Error Object:`, JSON.stringify(code, null, 2));
+      }
+      console.log(`${"!".repeat(80)}\n`);
+    },
+    warn(code, ...message) {
+      console.log(`[AUTH-INTERNAL-WARN] Code: ${code}`, ...message);
+    },
+    debug(code, ...message) {
+      console.log(`[AUTH-INTERNAL-DEBUG] Code: ${code}`, ...message);
+    },
+  },
   session: {
     strategy: "jwt", // Use JWT strategy for better serverless compatibility
     maxAge: 30 * 24 * 60 * 60, // 30 days
@@ -185,8 +224,21 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   },
   callbacks: {
     async signIn({ user, account }) {
+      console.log(`\n${"*".repeat(80)}`);
+      console.log(`[AUTH-CALLBACK] signIn callback invoked`);
+      console.log(`${"*".repeat(80)}`);
+      console.log(`[AUTH-CALLBACK] SignIn Details:`);
+      console.log(`  - User ID: ${user?.id || 'undefined'}`);
+      console.log(`  - User Email: ${user?.email || 'undefined'}`);
+      console.log(`  - Provider: ${account?.provider || 'undefined'}`);
+      console.log(`  - Has Access Token: ${!!account?.access_token}`);
+      console.log(`  - Has Refresh Token: ${!!account?.refresh_token}`);
+      console.log(`  - Token Expires At: ${account?.expires_at || 'undefined'}`);
+      console.log(`${"*".repeat(80)}\n`);
+
       if (account?.provider === "google" && account.access_token) {
         try {
+          console.log(`[AUTH-CALLBACK] Fetching YouTube Channel ID...`);
           // Buscar Channel ID do YouTube
           const oauth2Client = new google.auth.OAuth2();
           oauth2Client.setCredentials({ access_token: account.access_token });
@@ -198,16 +250,19 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           });
 
           const channelId = response.data.items?.[0]?.id;
+          console.log(`[AUTH-CALLBACK] YouTube Channel ID found: ${channelId || 'none'}`);
           if (channelId && user.email) {
             await prisma.user.update({
               where: { email: user.email },
               data: { youtubeChannelId: channelId },
             });
+            console.log(`[AUTH-CALLBACK] Updated user with YouTube Channel ID`);
           }
         } catch (error) {
-          console.error("Erro ao buscar Channel ID do YouTube:", error);
+          console.error("[AUTH-CALLBACK] Error fetching YouTube Channel ID:", error);
         }
       }
+      console.log(`[AUTH-CALLBACK] signIn callback completed successfully - returning true`);
       return true;
     },
     async jwt({ token, user, account }) {
