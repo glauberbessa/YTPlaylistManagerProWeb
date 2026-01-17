@@ -101,11 +101,11 @@ function logAuthConfig() {
   console.log(`[AUTH-CONFIG] Cookie Settings:`);
   console.log(`  - useSecureCookies: ${useSecureCookies}`);
   console.log(`  - cookiePrefix: "${cookiePrefix}"`);
-  console.log(`  - Expected PKCE cookie name: ${cookiePrefix}next-auth.pkce.code_verifier`);
-  console.log(`  - Expected state cookie name: ${cookiePrefix}next-auth.state`);
+  console.log(`  - State cookie name: ${cookiePrefix}next-auth.state`);
   console.log(`[AUTH-CONFIG] Provider Settings:`);
   console.log(`  - Provider: Google OAuth`);
   console.log(`  - Checks: ["state"] (PKCE disabled)`);
+  console.log(`  - PKCE cookies stripped in route handler`);
   console.log(`  - Session Strategy: JWT`);
   console.log(`${"#".repeat(80)}\n`);
 }
@@ -168,22 +168,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         secure: useSecureCookies,
       },
     },
-    // PKCE is disabled via checks: ["state"], but we need to explicitly configure
-    // the pkceCodeVerifier cookie with maxAge: 0 to force browsers to delete any
-    // stale PKCE cookies from previous auth attempts. This fixes the
-    // "pkceCodeVerifier value could not be parsed" error that occurs when old
-    // PKCE cookies exist but can't be decrypted (e.g., due to AUTH_SECRET change
-    // or cookies from when PKCE was enabled).
-    pkceCodeVerifier: {
-      name: `${cookiePrefix}next-auth.pkce.code_verifier`,
-      options: {
-        httpOnly: true,
-        sameSite: "lax",
-        path: "/",
-        secure: useSecureCookies,
-        maxAge: 0, // Force deletion of any existing PKCE cookies
-      },
-    },
+    // PKCE cookies are stripped from requests in the route handler before NextAuth
+    // processes them. This prevents the "pkceCodeVerifier could not be parsed" error.
+    // Do NOT configure pkceCodeVerifier here - any configuration (even with maxAge: 0)
+    // can trigger PKCE code paths in NextAuth v5.
     state: {
       name: `${cookiePrefix}next-auth.state`,
       options: {
