@@ -1,6 +1,69 @@
 import { handlers } from "@/lib/auth";
 import { NextRequest, NextResponse } from "next/server";
 
+/**
+ * Strip PKCE cookies from the request to prevent "pkceCodeVerifier could not be parsed" error.
+ *
+ * Problem: Even with PKCE disabled (checks: ["state"]), NextAuth v5 still attempts to parse
+ * existing PKCE cookies when they exist on the request. Stale PKCE cookies from previous
+ * auth attempts (or when AUTH_SECRET changed) cannot be decrypted and cause this error.
+ *
+ * Solution: Remove PKCE-related cookies from the request before NextAuth processes it.
+ * This ensures that callback requests don't fail due to stale/corrupt PKCE cookies.
+ */
+function stripPkceCookies(request: NextRequest): NextRequest {
+  const url = new URL(request.url);
+  const isCallback = url.pathname.includes('/callback') || url.searchParams.has('code');
+
+  if (!isCallback) {
+    return request;
+  }
+
+  // Get all cookies and filter out PKCE-related ones
+  const cookies = request.cookies.getAll();
+  const pkceCookieNames = cookies
+    .filter(c => c.name.includes('pkce') || c.name.includes('code_verifier'))
+    .map(c => c.name);
+
+  if (pkceCookieNames.length === 0) {
+    return request;
+  }
+
+  console.log(`[AUTH-PKCE-FIX] Stripping ${pkceCookieNames.length} PKCE cookie(s) from callback request:`, pkceCookieNames);
+
+  // Rebuild the Cookie header without PKCE cookies
+  const filteredCookies = cookies
+    .filter(c => !c.name.includes('pkce') && !c.name.includes('code_verifier'))
+    .map(c => `${c.name}=${c.value}`)
+    .join('; ');
+
+  // Create new headers with the filtered cookie string
+  const newHeaders = new Headers(request.headers);
+  if (filteredCookies) {
+    newHeaders.set('cookie', filteredCookies);
+  } else {
+    newHeaders.delete('cookie');
+  }
+
+  // Create a new request with the modified headers
+  const newRequest = new NextRequest(request.url, {
+    method: request.method,
+    headers: newHeaders,
+    body: request.body,
+    cache: request.cache,
+    credentials: request.credentials,
+    integrity: request.integrity,
+    keepalive: request.keepalive,
+    mode: request.mode,
+    redirect: request.redirect,
+    referrer: request.referrer,
+    referrerPolicy: request.referrerPolicy,
+    signal: request.signal,
+  });
+
+  return newRequest;
+}
+
 // Comprehensive auth debug logging
 function logAuthRequest(request: NextRequest, action: string) {
   const url = new URL(request.url);
@@ -136,12 +199,14 @@ async function logAuthError(error: unknown, debugInfo: ReturnType<typeof logAuth
   console.log(`${"!".repeat(80)}\n`);
 }
 
-// Wrap GET handler with logging
+// Wrap GET handler with logging and PKCE cookie stripping
 export async function GET(request: NextRequest) {
   const debugInfo = logAuthRequest(request, 'GET');
 
   try {
-    const response = await handlers.GET(request);
+    // Strip PKCE cookies from callback requests to prevent parsing errors
+    const sanitizedRequest = stripPkceCookies(request);
+    const response = await handlers.GET(sanitizedRequest);
     logAuthResponse(response, debugInfo, 'GET');
     return response;
   } catch (error) {
@@ -150,12 +215,14 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// Wrap POST handler with logging
+// Wrap POST handler with logging and PKCE cookie stripping
 export async function POST(request: NextRequest) {
   const debugInfo = logAuthRequest(request, 'POST');
 
   try {
-    const response = await handlers.POST(request);
+    // Strip PKCE cookies to prevent parsing errors
+    const sanitizedRequest = stripPkceCookies(request);
+    const response = await handlers.POST(sanitizedRequest);
     logAuthResponse(response, debugInfo, 'POST');
     return response;
   } catch (error) {
