@@ -162,6 +162,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           prompt: "consent",
         },
       },
+      // Disable PKCE and use only state verification to fix "Invalid code verifier" error
+      // in serverless environments. Google OAuth supports but doesn't require PKCE.
+      // The state parameter still provides CSRF protection.
+      checks: ["state"],
     }),
   ],
   pages: {
