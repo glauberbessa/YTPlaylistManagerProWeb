@@ -89,15 +89,13 @@ export function VideoTable({
       {
         accessorKey: "title",
         header: ({ column }) => (
-          <div className="text-right">
-            <Button
-              variant="ghost"
-              onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-            >
-              {UI_TEXT.columns.title}
-              <ArrowUpDown className="ml-2 h-4 w-4" />
-            </Button>
-          </div>
+          <Button
+            variant="ghost"
+            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+          >
+            {UI_TEXT.columns.title}
+            <ArrowUpDown className="ml-2 h-4 w-4" />
+          </Button>
         ),
         cell: ({ row }) => (
           <div className="max-w-[300px]">
@@ -116,15 +114,13 @@ export function VideoTable({
       {
         accessorKey: "channelTitle",
         header: ({ column }) => (
-          <div className="text-right">
-            <Button
-              variant="ghost"
-              onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-            >
-              {UI_TEXT.columns.channel}
-              <ArrowUpDown className="ml-2 h-4 w-4" />
-            </Button>
-          </div>
+          <Button
+            variant="ghost"
+            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+          >
+            {UI_TEXT.columns.channel}
+            <ArrowUpDown className="ml-2 h-4 w-4" />
+          </Button>
         ),
         cell: ({ row }) => (
           <span className="max-w-[150px] truncate block">
@@ -161,15 +157,13 @@ export function VideoTable({
       {
         accessorKey: "publishedAt",
         header: ({ column }) => (
-          <div className="text-right">
-            <Button
-              variant="ghost"
-              onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-            >
-              {UI_TEXT.columns.published}
-              <ArrowUpDown className="ml-2 h-4 w-4" />
-            </Button>
-          </div>
+          <Button
+            variant="ghost"
+            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+          >
+            {UI_TEXT.columns.published}
+            <ArrowUpDown className="ml-2 h-4 w-4" />
+          </Button>
         ),
         cell: ({ row }) =>
           row.original.publishedAt ? formatDate(row.original.publishedAt) : "-",
@@ -177,15 +171,13 @@ export function VideoTable({
       {
         accessorKey: "language",
         header: ({ column }) => (
-          <div className="text-right">
-            <Button
-              variant="ghost"
-              onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-            >
-              {UI_TEXT.columns.language}
-              <ArrowUpDown className="ml-2 h-4 w-4" />
-            </Button>
-          </div>
+          <Button
+            variant="ghost"
+            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+          >
+            {UI_TEXT.columns.language}
+            <ArrowUpDown className="ml-2 h-4 w-4" />
+          </Button>
         ),
         cell: ({ row }) =>
           row.original.language
