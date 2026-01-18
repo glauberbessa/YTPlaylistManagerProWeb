@@ -5,22 +5,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    console.log("[API/auth/debug] Starting debug request...");
-    console.log("[API/auth/debug] NEXTAUTH_URL:", process.env.NEXTAUTH_URL);
-    console.log("[API/auth/debug] Has NEXTAUTH_SECRET:", !!process.env.NEXTAUTH_SECRET);
-    console.log("[API/auth/debug] Has GOOGLE_CLIENT_ID:", !!process.env.GOOGLE_CLIENT_ID);
-    console.log("[API/auth/debug] Has GOOGLE_CLIENT_SECRET:", !!process.env.GOOGLE_CLIENT_SECRET);
-    console.log("[API/auth/debug] Has DATABASE_URL:", !!process.env.DATABASE_URL);
-
     const session = await auth();
-
-    console.log("[API/auth/debug] Session result:", {
-      hasSession: !!session,
-      hasUser: !!session?.user,
-      hasUserId: !!session?.user?.id,
-      hasAccessToken: !!session?.accessToken,
-      hasYoutubeChannelId: !!session?.user?.youtubeChannelId,
-    });
 
     if (!session) {
       return NextResponse.json({
@@ -75,7 +60,6 @@ export async function GET() {
       },
     });
   } catch (error) {
-    console.error("[API/auth/debug] Error:", error);
     return NextResponse.json(
       {
         status: "error",
