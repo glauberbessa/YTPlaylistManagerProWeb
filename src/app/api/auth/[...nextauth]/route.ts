@@ -1,5 +1,6 @@
 import { handlers } from "@/lib/auth";
 import { NextRequest, NextResponse } from "next/server";
+import { logger, AuthFlowTracker, generateTraceId, setTraceId, clearTraceId } from "@/lib/logger";
 
 /**
  * Strip PKCE cookies from the request to prevent "pkceCodeVerifier could not be parsed" error.
@@ -29,7 +30,10 @@ function stripPkceCookies(request: NextRequest): NextRequest {
     return request;
   }
 
-  console.log(`[AUTH-PKCE-FIX] Stripping ${pkceCookieNames.length} PKCE cookie(s) from callback request:`, pkceCookieNames);
+  logger.info("AUTH_PKCE", `Stripping ${pkceCookieNames.length} PKCE cookie(s) from callback request`, {
+    cookieNames: pkceCookieNames,
+    pathname: url.pathname,
+  });
 
   // Rebuild the Cookie header without PKCE cookies
   const filteredCookies = cookies
@@ -67,7 +71,8 @@ function stripPkceCookies(request: NextRequest): NextRequest {
 // Comprehensive auth debug logging
 function logAuthRequest(request: NextRequest, action: string) {
   const url = new URL(request.url);
-  const timestamp = new Date().toISOString();
+  const traceId = generateTraceId();
+  setTraceId(traceId);
 
   // Get all cookies
   const cookies: Record<string, string> = {};
@@ -113,34 +118,41 @@ function logAuthRequest(request: NextRequest, action: string) {
     }
   });
 
-  // Log complete debug info
-  console.log(`\n${"=".repeat(80)}`);
-  console.log(`[AUTH-DEBUG] ${timestamp} - ${action}`);
-  console.log(`${"=".repeat(80)}`);
-  console.log(`[AUTH-DEBUG] Request Details:`);
-  console.log(`  - Method: ${request.method}`);
-  console.log(`  - URL: ${url.toString()}`);
-  console.log(`  - Pathname: ${url.pathname}`);
-  console.log(`  - NextAuth Action: ${url.pathname.split('/').pop()}`);
-  console.log(`[AUTH-DEBUG] Query Parameters:`, JSON.stringify(params, null, 2));
-  console.log(`[AUTH-DEBUG] Cookies Present:`, JSON.stringify(cookies, null, 2));
-  console.log(`[AUTH-DEBUG] Headers:`, JSON.stringify(headers, null, 2));
-  console.log(`[AUTH-DEBUG] Environment Check:`);
-  console.log(`  - NODE_ENV: ${process.env.NODE_ENV}`);
-  console.log(`  - VERCEL: ${process.env.VERCEL || 'not set'}`);
-  console.log(`  - NEXTAUTH_URL: ${process.env.NEXTAUTH_URL || 'not set'}`);
-  console.log(`  - AUTH_URL: ${process.env.AUTH_URL || 'not set'}`);
-  console.log(`  - Has GOOGLE_CLIENT_ID: ${!!process.env.GOOGLE_CLIENT_ID}`);
-  console.log(`  - Has AUTH_SECRET: ${!!process.env.AUTH_SECRET}`);
-  console.log(`  - Has NEXTAUTH_SECRET: ${!!process.env.NEXTAUTH_SECRET}`);
-  console.log(`${"=".repeat(80)}\n`);
+  // Determine auth action type
+  const authAction = url.pathname.split('/').pop();
+  const isCallback = authAction === 'callback' || url.searchParams.has('code');
+  const isSignIn = authAction === 'signin';
+  const isSignOut = authAction === 'signout';
 
-  return { timestamp, cookies, headers, params };
+  logger.info("AUTH_ROUTE", `${action} Request - ${authAction}`, {
+    traceId,
+    method: request.method,
+    url: url.toString(),
+    pathname: url.pathname,
+    authAction,
+    isCallback,
+    isSignIn,
+    isSignOut,
+    queryParams: params,
+    cookies,
+    headers,
+    environment: {
+      NODE_ENV: process.env.NODE_ENV,
+      isVercel: !!process.env.VERCEL,
+      hasNextAuthUrl: !!process.env.NEXTAUTH_URL,
+      hasAuthUrl: !!process.env.AUTH_URL,
+      hasGoogleClientId: !!process.env.GOOGLE_CLIENT_ID,
+      hasAuthSecret: !!process.env.AUTH_SECRET,
+      hasNextAuthSecret: !!process.env.NEXTAUTH_SECRET,
+    },
+  });
+
+  return { traceId, cookies, headers, params, isCallback };
 }
 
 function logAuthResponse(
   response: Response | NextResponse,
-  debugInfo: { timestamp: string; cookies: Record<string, string>; headers: Record<string, string>; params: Record<string, string> },
+  debugInfo: { traceId: string; cookies: Record<string, string>; headers: Record<string, string>; params: Record<string, string>; isCallback: boolean },
   action: string
 ) {
   // Get response cookies
@@ -157,46 +169,64 @@ function logAuthResponse(
     });
   }
 
-  console.log(`\n${"=".repeat(80)}`);
-  console.log(`[AUTH-DEBUG] ${debugInfo.timestamp} - ${action} RESPONSE`);
-  console.log(`${"=".repeat(80)}`);
-  console.log(`[AUTH-DEBUG] Response Details:`);
-  console.log(`  - Status: ${response.status}`);
-  console.log(`  - Status Text: ${response.statusText || 'N/A'}`);
-  console.log(`  - Redirect Location: ${response.headers.get('location') || 'none'}`);
-  console.log(`[AUTH-DEBUG] Response Cookies:`, JSON.stringify(responseCookies, null, 2));
-  console.log(`${"=".repeat(80)}\n`);
+  const redirectLocation = response.headers.get('location');
+  const isRedirect = response.status >= 300 && response.status < 400;
+
+  logger.info("AUTH_ROUTE", `${action} Response`, {
+    traceId: debugInfo.traceId,
+    status: response.status,
+    statusText: response.statusText || 'N/A',
+    isRedirect,
+    redirectLocation,
+    responseCookies,
+    isCallback: debugInfo.isCallback,
+  });
+
+  // Log successful callback completion separately as it's important
+  if (debugInfo.isCallback && isRedirect && redirectLocation) {
+    logger.info("AUTH_ROUTE", "OAuth callback completed - redirecting user", {
+      traceId: debugInfo.traceId,
+      redirectTo: redirectLocation,
+      cookiesSet: Object.keys(responseCookies).filter(k => responseCookies[k] === '[SET]'),
+    });
+  }
+
+  clearTraceId();
 }
 
 async function logAuthError(error: unknown, debugInfo: ReturnType<typeof logAuthRequest>, action: string) {
-  console.log(`\n${"!".repeat(80)}`);
-  console.log(`[AUTH-ERROR] ${debugInfo.timestamp} - ${action} FAILED`);
-  console.log(`${"!".repeat(80)}`);
+  const isPkceError = error instanceof Error &&
+    (error.message.includes('pkceCodeVerifier') || error.name === 'InvalidCheck');
 
-  if (error instanceof Error) {
-    console.log(`[AUTH-ERROR] Error Name: ${error.name}`);
-    console.log(`[AUTH-ERROR] Error Message: ${error.message}`);
-    console.log(`[AUTH-ERROR] Error Stack:\n${error.stack}`);
-
-    // Check for specific PKCE error
-    if (error.message.includes('pkceCodeVerifier') || error.name === 'InvalidCheck') {
-      console.log(`[AUTH-ERROR] *** PKCE ERROR DETECTED ***`);
-      console.log(`[AUTH-ERROR] This error typically occurs when:`);
-      console.log(`  1. A pkceCodeVerifier cookie exists from a previous auth attempt`);
-      console.log(`  2. The cookie value cannot be decrypted (AUTH_SECRET changed)`);
-      console.log(`  3. The cookie is from when PKCE was enabled`);
-      console.log(`[AUTH-ERROR] Request Cookies at time of error:`, JSON.stringify(debugInfo.cookies, null, 2));
-      console.log(`[AUTH-ERROR] Suggested fix: Clear browser cookies for this domain`);
-    }
+  if (isPkceError) {
+    logger.critical("AUTH_PKCE", "PKCE Error Detected - This is likely causing auth failures", error as Error, {
+      traceId: debugInfo.traceId,
+      explanation: [
+        "A pkceCodeVerifier cookie exists from a previous auth attempt",
+        "The cookie value cannot be decrypted (AUTH_SECRET may have changed)",
+        "The cookie is from when PKCE was enabled",
+      ],
+      suggestedFix: "Clear browser cookies for this domain or wait for cookies to expire",
+      requestCookies: debugInfo.cookies,
+    });
+  } else if (error instanceof Error) {
+    logger.error("AUTH_ROUTE", `${action} Failed`, error, {
+      traceId: debugInfo.traceId,
+      cookies: debugInfo.cookies,
+      headers: debugInfo.headers,
+      params: debugInfo.params,
+    });
   } else {
-    console.log(`[AUTH-ERROR] Unknown error type:`, error);
+    logger.error("AUTH_ROUTE", `${action} Failed with unknown error`, undefined, {
+      traceId: debugInfo.traceId,
+      error: String(error),
+      cookies: debugInfo.cookies,
+      headers: debugInfo.headers,
+      params: debugInfo.params,
+    });
   }
 
-  console.log(`[AUTH-ERROR] Full Debug Context:`);
-  console.log(`  - Cookies:`, JSON.stringify(debugInfo.cookies, null, 2));
-  console.log(`  - Headers:`, JSON.stringify(debugInfo.headers, null, 2));
-  console.log(`  - Params:`, JSON.stringify(debugInfo.params, null, 2));
-  console.log(`${"!".repeat(80)}\n`);
+  clearTraceId();
 }
 
 // Wrap GET handler with logging and PKCE cookie stripping

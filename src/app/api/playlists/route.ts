@@ -2,19 +2,29 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { YouTubeService } from "@/lib/youtube";
 import { prisma } from "@/lib/prisma";
+import { logger, generateTraceId, setTraceId, clearTraceId } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
+  const traceId = generateTraceId();
+  setTraceId(traceId);
+  const startTime = Date.now();
+
   try {
-    console.log("[API/playlists] Starting request...");
+    logger.info("API", "GET /api/playlists - Request started", { traceId });
+
     const session = await auth();
 
-    console.log("[API/playlists] Session check:", {
+    logger.info("API", "Session retrieved", {
+      traceId,
       hasSession: !!session,
       hasUser: !!session?.user,
       hasUserId: !!session?.user?.id,
+      userId: session?.user?.id,
       hasAccessToken: !!session?.accessToken,
+      accessTokenLength: session?.accessToken?.length || 0,
+      userEmail: session?.user?.email,
     });
 
     if (!session?.user?.id || !session.accessToken) {
@@ -24,12 +34,22 @@ export async function GET() {
           ? "no_user_id"
           : "no_access_token";
 
-      console.log("[API/playlists] Unauthorized - reason:", reason);
+      logger.warn("API", "GET /api/playlists - Unauthorized", {
+        traceId,
+        reason,
+        hasSession: !!session,
+        hasUser: !!session?.user,
+        hasUserId: !!session?.user?.id,
+        hasAccessToken: !!session?.accessToken,
+      });
+
+      clearTraceId();
 
       return NextResponse.json(
         {
           error: "Não autorizado",
           reason,
+          traceId,
           hint:
             reason === "no_session"
               ? "Sessão não encontrada. Verifique se está logado e se os cookies estão sendo enviados."
@@ -41,23 +61,41 @@ export async function GET() {
       );
     }
 
-    console.log("[API/playlists] User authenticated:", session.user.id);
+    logger.info("API", "User authenticated, creating YouTubeService", {
+      traceId,
+      userId: session.user.id,
+      accessTokenPreview: `${session.accessToken.substring(0, 20)}...`,
+    });
 
     const youtubeService = new YouTubeService(
       session.accessToken,
       session.user.id
     );
 
-    console.log("[API/playlists] Fetching playlists from YouTube...");
+    logger.info("API", "Fetching playlists from YouTube API", { traceId });
+    const youtubeStartTime = Date.now();
     const playlists = await youtubeService.getPlaylists();
-    console.log("[API/playlists] Playlists fetched from YouTube:", playlists.length);
+    const youtubeElapsed = Date.now() - youtubeStartTime;
+
+    logger.info("API", "Playlists fetched from YouTube", {
+      traceId,
+      playlistCount: playlists.length,
+      elapsed: `${youtubeElapsed}ms`,
+    });
 
     // Buscar configurações das playlists
-    console.log("[API/playlists] Fetching playlist configs from database...");
+    logger.info("API", "Fetching playlist configs from database", { traceId });
+    const dbStartTime = Date.now();
     const configs = await prisma.playlistConfig.findMany({
       where: { userId: session.user.id },
     });
-    console.log("[API/playlists] Configs found:", configs.length);
+    const dbElapsed = Date.now() - dbStartTime;
+
+    logger.database("Fetch playlist configs", true, {
+      traceId,
+      configCount: configs.length,
+      elapsed: `${dbElapsed}ms`,
+    });
 
     // Mesclar playlists com configurações
     const playlistsWithConfig = playlists.map((playlist) => {
@@ -80,12 +118,38 @@ export async function GET() {
     // Ordenar playlists por título (A-Z)
     playlistsWithConfig.sort((a, b) => a.title.localeCompare(b.title));
 
-    console.log("[API/playlists] Returning", playlistsWithConfig.length, "playlists");
+    const totalElapsed = Date.now() - startTime;
+
+    logger.info("API", "GET /api/playlists - Request completed successfully", {
+      traceId,
+      playlistCount: playlistsWithConfig.length,
+      configuredCount: playlistsWithConfig.filter((p) => p.config).length,
+      totalElapsed: `${totalElapsed}ms`,
+      youtubeApiTime: `${youtubeElapsed}ms`,
+      databaseTime: `${dbElapsed}ms`,
+    });
+
+    clearTraceId();
+
     return NextResponse.json(playlistsWithConfig);
   } catch (error) {
-    console.error("[API/playlists] Error:", error);
+    const totalElapsed = Date.now() - startTime;
+
+    logger.error("API", "GET /api/playlists - Request failed", error instanceof Error ? error : undefined, {
+      traceId,
+      elapsed: `${totalElapsed}ms`,
+      errorMessage: error instanceof Error ? error.message : String(error),
+      errorCode: (error as { code?: number })?.code,
+    });
+
+    clearTraceId();
+
     return NextResponse.json(
-      { error: "Erro ao buscar playlists", details: error instanceof Error ? error.message : String(error) },
+      {
+        error: "Erro ao buscar playlists",
+        traceId,
+        details: error instanceof Error ? error.message : String(error),
+      },
       { status: 500 }
     );
   }
