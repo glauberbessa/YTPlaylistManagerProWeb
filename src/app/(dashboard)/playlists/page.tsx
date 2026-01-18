@@ -7,6 +7,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {
   PlaylistSelector,
   VideoFilters,
+  VideoGrid,
   VideoTable,
   StatsBar,
   TransferDialog,
@@ -17,6 +18,13 @@ import { useFilterStore } from "@/stores/filterStore";
 import { UI_TEXT } from "@/lib/i18n";
 import { ArrowRight, ListVideo } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 export default function PlaylistsPage() {
   const { toast } = useToast();
@@ -25,6 +33,7 @@ export default function PlaylistsPage() {
   const [destinationPlaylistId, setDestinationPlaylistId] = useState<string | null>(null);
   const [selectedVideos, setSelectedVideos] = useState<Set<string>>(new Set());
   const [transferDialogOpen, setTransferDialogOpen] = useState(false);
+  const [layout, setLayout] = useState<"grid" | "table">("grid");
 
   const { filter, resetFilters } = useFilterStore();
 
@@ -194,13 +203,39 @@ export default function PlaylistsPage() {
                 selectedVideos={selectedVideos}
               />
 
-              {/* Table */}
-              <VideoTable
-                videos={filteredVideos}
-                selectedVideos={selectedVideos}
-                onToggleSelect={handleToggleSelect}
-                onToggleSelectAll={handleToggleSelectAll}
-              />
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <span className="text-sm text-muted-foreground">
+                  Layouts
+                </span>
+                <Select
+                  value={layout}
+                  onValueChange={(value) => setLayout(value as "grid" | "table")}
+                >
+                  <SelectTrigger className="w-[180px]">
+                    <SelectValue placeholder="Selecione o layout" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="grid">Grade</SelectItem>
+                    <SelectItem value="table">Tabela</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {layout === "table" ? (
+                <VideoTable
+                  videos={filteredVideos}
+                  selectedVideos={selectedVideos}
+                  onToggleSelect={handleToggleSelect}
+                  onToggleSelectAll={handleToggleSelectAll}
+                />
+              ) : (
+                <VideoGrid
+                  videos={filteredVideos}
+                  selectedVideos={selectedVideos}
+                  onToggleSelect={handleToggleSelect}
+                  onToggleSelectAll={handleToggleSelectAll}
+                />
+              )}
             </>
           )}
         </>
