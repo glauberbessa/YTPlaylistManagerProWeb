@@ -4,6 +4,13 @@
 # This script resolves Prisma error P3005 by marking the initial migration
 # as applied when the database already has tables but no migration history.
 
+# Check if DATABASE_URL is set - if not, skip migrations (build environment may not have it)
+if [ -z "$DATABASE_URL" ]; then
+  echo "DATABASE_URL is not set. Skipping database migrations."
+  echo "Migrations will be applied when the application starts or via manual deploy."
+  exit 0
+fi
+
 echo "Running database migration..."
 
 # Capture output and exit code from prisma migrate deploy
