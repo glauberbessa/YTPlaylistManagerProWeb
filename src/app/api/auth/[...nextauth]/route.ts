@@ -33,8 +33,11 @@ function isPkceCookie(cookieName: string): boolean {
  *
  * Solution: Remove ALL PKCE-related cookies from the request before Auth.js processes it.
  * This includes cookies with both authjs.* and next-auth.* prefixes.
+ *
+ * IMPORTANT: NextRequest cloning doesn't properly re-parse cookies from modified headers.
+ * We need to use the native Request API and wrap it appropriately.
  */
-function stripPkceCookies(request: NextRequest): NextRequest {
+function stripPkceCookies(request: NextRequest): Request {
   const url = new URL(request.url);
   const isCallback = url.pathname.includes('/callback') || url.searchParams.has('code');
 
@@ -76,30 +79,37 @@ function stripPkceCookies(request: NextRequest): NextRequest {
     .join('; ');
 
   // Create new headers with the filtered cookie string
-  const newHeaders = new Headers(request.headers);
+  // Use the native Headers API for proper cookie handling
+  const newHeaders = new Headers();
+  request.headers.forEach((value, key) => {
+    // Skip the cookie header - we'll set it manually
+    if (key.toLowerCase() !== 'cookie') {
+      newHeaders.set(key, value);
+    }
+  });
+
+  // Set the filtered cookies (or omit if empty)
   if (filteredCookies) {
     newHeaders.set('cookie', filteredCookies);
-  } else {
-    newHeaders.delete('cookie');
   }
 
-  // Create a new request with the modified headers
-  const newRequest = new NextRequest(request.url, {
+  // Use the native Request API instead of NextRequest
+  // This ensures cookies are properly parsed from the new headers
+  // Auth.js handlers accept standard Request objects
+  const cleanRequest = new Request(request.url, {
     method: request.method,
     headers: newHeaders,
     body: request.body,
-    cache: request.cache,
-    credentials: request.credentials,
-    integrity: request.integrity,
-    keepalive: request.keepalive,
-    mode: request.mode,
-    redirect: request.redirect,
-    referrer: request.referrer,
-    referrerPolicy: request.referrerPolicy,
-    signal: request.signal,
+    // Note: Not all properties are transferable, but these are the critical ones
   });
 
-  return newRequest;
+  logger.info("AUTH_PKCE", "Created clean request without PKCE cookies", {
+    originalCookieCount: cookies.length,
+    newCookieCount: filteredCookies ? filteredCookies.split(';').length : 0,
+    strippedCount: pkceCookieNames.length,
+  });
+
+  return cleanRequest;
 }
 
 // Comprehensive auth debug logging
@@ -263,34 +273,172 @@ async function logAuthError(error: unknown, debugInfo: ReturnType<typeof logAuth
   clearTraceId();
 }
 
-// Wrap GET handler with logging and PKCE cookie stripping
+/**
+ * Check if an error is a PKCE-related error.
+ */
+function isPkceError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const message = error.message.toLowerCase();
+  const name = error.name?.toLowerCase() || '';
+  return (
+    message.includes('pkcecod') ||
+    message.includes('pkce') ||
+    message.includes('code_verifier') ||
+    message.includes('code verifier') ||
+    name === 'invalidcheck'
+  );
+}
+
+/**
+ * Create a response that clears PKCE cookies from the client browser.
+ * This is called when a PKCE error occurs to prevent future errors.
+ */
+function createPkceClearingRedirectResponse(request: NextRequest): NextResponse {
+  const url = new URL(request.url);
+  const isCallback = url.pathname.includes('/callback') || url.searchParams.has('code');
+
+  // Determine redirect destination
+  // If this is a callback, redirect to login with error
+  // Otherwise redirect to the current auth endpoint without PKCE cookies
+  let redirectUrl: string;
+  if (isCallback) {
+    redirectUrl = '/login?error=AuthenticationError';
+  } else {
+    redirectUrl = url.pathname;
+  }
+
+  const response = NextResponse.redirect(new URL(redirectUrl, request.url));
+
+  // Clear all known PKCE cookie variations
+  const cookiesToClear = [
+    // Auth.js v5 patterns
+    'authjs.pkce.code_verifier',
+    '__Secure-authjs.pkce.code_verifier',
+    '__Host-authjs.pkce.code_verifier',
+    // NextAuth v4 patterns
+    'next-auth.pkce.code_verifier',
+    '__Secure-next-auth.pkce.code_verifier',
+    '__Host-next-auth.pkce.code_verifier',
+    // Additional patterns that might exist
+    'authjs.pkce',
+    '__Secure-authjs.pkce',
+  ];
+
+  for (const cookieName of cookiesToClear) {
+    // Delete with various configurations to ensure removal
+    response.cookies.set(cookieName, '', {
+      maxAge: 0,
+      path: '/',
+      expires: new Date(0),
+    });
+    // Also try with secure settings for __Secure- prefixed cookies
+    if (cookieName.startsWith('__Secure-') || cookieName.startsWith('__Host-')) {
+      response.cookies.set(cookieName, '', {
+        maxAge: 0,
+        path: '/',
+        expires: new Date(0),
+        secure: true,
+        sameSite: 'lax',
+      });
+    }
+  }
+
+  logger.info("AUTH_PKCE", "Created PKCE-clearing redirect response", {
+    redirectUrl,
+    clearedCookies: cookiesToClear.length,
+  });
+
+  return response;
+}
+
+/**
+ * Add PKCE cookie deletion headers to an existing response.
+ */
+function addPkceClearingHeaders(response: Response | NextResponse, request: NextRequest): NextResponse {
+  // Get PKCE cookies from the request
+  const pkceCookies = request.cookies.getAll().filter(c => isPkceCookie(c.name));
+
+  if (pkceCookies.length === 0) {
+    return response instanceof NextResponse ? response : NextResponse.json(null, { status: response.status, headers: response.headers });
+  }
+
+  // Clone response and add cookie clearing headers
+  const newResponse = new NextResponse(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: new Headers(response.headers),
+  });
+
+  // Clear each PKCE cookie found
+  for (const cookie of pkceCookies) {
+    newResponse.cookies.set(cookie.name, '', {
+      maxAge: 0,
+      path: '/',
+      expires: new Date(0),
+    });
+    logger.info("AUTH_PKCE", `Clearing PKCE cookie from response: ${cookie.name}`);
+  }
+
+  return newResponse;
+}
+
+// Wrap GET handler with logging, PKCE cookie stripping, and error recovery
 export async function GET(request: NextRequest) {
   const debugInfo = logAuthRequest(request, 'GET');
 
   try {
     // Strip PKCE cookies from callback requests to prevent parsing errors
-    const sanitizedRequest = stripPkceCookies(request);
+    // Cast to NextRequest for type compatibility - Auth.js handlers accept standard Request objects
+    const sanitizedRequest = stripPkceCookies(request) as NextRequest;
     const response = await handlers.GET(sanitizedRequest);
-    logAuthResponse(response, debugInfo, 'GET');
-    return response;
+
+    // Add PKCE clearing headers to the response to prevent future issues
+    const enhancedResponse = addPkceClearingHeaders(response, request);
+
+    logAuthResponse(enhancedResponse, debugInfo, 'GET');
+    return enhancedResponse;
   } catch (error) {
     await logAuthError(error, debugInfo, 'GET');
+
+    // If this is a PKCE error, return a response that clears the cookies
+    // and redirects the user to retry authentication
+    if (isPkceError(error)) {
+      logger.info("AUTH_PKCE", "Caught PKCE error, returning cookie-clearing redirect", {
+        errorMessage: error instanceof Error ? error.message : String(error),
+      });
+      return createPkceClearingRedirectResponse(request);
+    }
+
     throw error;
   }
 }
 
-// Wrap POST handler with logging and PKCE cookie stripping
+// Wrap POST handler with logging, PKCE cookie stripping, and error recovery
 export async function POST(request: NextRequest) {
   const debugInfo = logAuthRequest(request, 'POST');
 
   try {
     // Strip PKCE cookies to prevent parsing errors
-    const sanitizedRequest = stripPkceCookies(request);
+    // Cast to NextRequest for type compatibility - Auth.js handlers accept standard Request objects
+    const sanitizedRequest = stripPkceCookies(request) as NextRequest;
     const response = await handlers.POST(sanitizedRequest);
-    logAuthResponse(response, debugInfo, 'POST');
-    return response;
+
+    // Add PKCE clearing headers to the response
+    const enhancedResponse = addPkceClearingHeaders(response, request);
+
+    logAuthResponse(enhancedResponse, debugInfo, 'POST');
+    return enhancedResponse;
   } catch (error) {
     await logAuthError(error, debugInfo, 'POST');
+
+    // If this is a PKCE error, return a response that clears the cookies
+    if (isPkceError(error)) {
+      logger.info("AUTH_PKCE", "Caught PKCE error, returning cookie-clearing redirect", {
+        errorMessage: error instanceof Error ? error.message : String(error),
+      });
+      return createPkceClearingRedirectResponse(request);
+    }
+
     throw error;
   }
 }
