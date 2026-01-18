@@ -357,12 +357,33 @@ async function checkDatabaseStatus(): Promise<Record<string, unknown>> {
       recentAccounts: accountsAnalysis,
     };
   } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    const missingTable = extractMissingTable(message);
     return {
       connected: false,
       latency: `${Date.now() - startTime}ms`,
-      error: error instanceof Error ? error.message : "Unknown error",
+      error: message,
+      missingTable,
+      guidance: missingTable
+        ? [
+            "Run `prisma migrate deploy` (recommended for production) against the target database.",
+            "Confirm DATABASE_URL in Vercel points to the database you migrated.",
+          ]
+        : [],
     };
   }
+}
+
+function extractMissingTable(message: string): string | null {
+  const prismaMatch = message.match(/The table `([^`]+)` does not exist/i);
+  if (prismaMatch?.[1]) {
+    return prismaMatch[1];
+  }
+  const relationMatch = message.match(/relation \"([^\"]+)\" does not exist/i);
+  if (relationMatch?.[1]) {
+    return relationMatch[1];
+  }
+  return null;
 }
 
 /**
@@ -424,6 +445,19 @@ function generateAuthChecklist(
     checklist.database = { status: "ok", message: "Database URL is configured" };
   } else {
     checklist.database = { status: "error", message: "DATABASE_URL is not set" };
+  }
+
+  const dbStatus = diagnostic.database as Record<string, unknown> | undefined;
+  if (dbStatus && "connected" in dbStatus) {
+    if (dbStatus.connected === false) {
+      const missingTable = dbStatus.missingTable as string | null | undefined;
+      checklist.database = {
+        status: "error",
+        message: missingTable
+          ? `Database query failed: missing table ${missingTable}. Run prisma migrations against the production database.`
+          : `Database query failed: ${dbStatus.error ?? "Unknown error"}`,
+      };
+    }
   }
 
   // Check session state

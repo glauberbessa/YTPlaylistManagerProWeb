@@ -140,6 +140,37 @@ function logAuthConfig() {
   });
 }
 
+function extractAuthErrorMessage(messages: unknown[]): string {
+  return messages
+    .map((entry) => {
+      if (entry instanceof Error) {
+        return entry.message;
+      }
+      if (typeof entry === "string") {
+        return entry;
+      }
+      if (entry && typeof entry === "object" && "message" in entry) {
+        const message = (entry as { message?: unknown }).message;
+        return typeof message === "string" ? message : JSON.stringify(entry);
+      }
+      return JSON.stringify(entry);
+    })
+    .filter(Boolean)
+    .join(" ");
+}
+
+function extractMissingTable(message: string): string | null {
+  const prismaMatch = message.match(/The table `([^`]+)` does not exist/i);
+  if (prismaMatch?.[1]) {
+    return prismaMatch[1];
+  }
+  const relationMatch = message.match(/relation \"([^\"]+)\" does not exist/i);
+  if (relationMatch?.[1]) {
+    return relationMatch[1];
+  }
+  return null;
+}
+
 // Log config and environment on module load
 logAuthConfig();
 logEnvironmentInfo();
@@ -159,6 +190,17 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         console.log(`[AUTH-INTERNAL-ERROR] Error Object:`, JSON.stringify(code, null, 2));
       }
       console.log(`${"!".repeat(80)}\n`);
+
+      const combinedMessage = extractAuthErrorMessage(message);
+      const missingTable = extractMissingTable(combinedMessage);
+      if (missingTable) {
+        logger.critical("DATABASE", "Missing Prisma table detected during auth", undefined, {
+          missingTable,
+          isVercel: !!process.env.VERCEL,
+          hasDatabaseUrl: !!process.env.DATABASE_URL,
+          guidance: "Run `prisma migrate deploy` (or `prisma db push`) against the production database and confirm DATABASE_URL points to that database.",
+        });
+      }
     },
     warn(code, ...message) {
       console.log(`[AUTH-INTERNAL-WARN] Code: ${code}`, ...message);
