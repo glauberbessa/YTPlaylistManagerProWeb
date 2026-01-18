@@ -199,10 +199,23 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         secure: useSecureCookies,
       },
     },
-    // PKCE cookies are stripped from requests in the route handler before NextAuth
-    // processes them. This prevents the "pkceCodeVerifier could not be parsed" error.
-    // Do NOT configure pkceCodeVerifier here - any configuration (even with maxAge: 0)
-    // can trigger PKCE code paths in NextAuth v5.
+    // PKCE code verifier cookie configuration.
+    // Even though we use checks: ["state"] (PKCE disabled), we explicitly configure
+    // the PKCE cookie with maxAge: 0 to ensure any stale cookies are immediately deleted.
+    // This helps prevent "pkceCodeVerifier could not be parsed" errors caused by:
+    // 1. Old cookies encrypted with a previous AUTH_SECRET
+    // 2. Cookies from previous auth attempts when PKCE was enabled
+    // 3. Cookies that couldn't be properly removed during callback
+    pkceCodeVerifier: {
+      name: `${cookiePrefix}authjs.pkce.code_verifier`,
+      options: {
+        httpOnly: true,
+        sameSite: "lax",
+        path: "/",
+        secure: useSecureCookies,
+        maxAge: 0, // Immediately expire - we don't use PKCE
+      },
+    },
     state: {
       name: `${cookiePrefix}next-auth.state`,
       options: {

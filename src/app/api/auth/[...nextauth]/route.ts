@@ -3,41 +3,75 @@ import { NextRequest, NextResponse } from "next/server";
 import { logger, AuthFlowTracker, generateTraceId, setTraceId, clearTraceId } from "@/lib/logger";
 
 /**
+ * Check if a cookie name is PKCE-related.
+ * Covers both Auth.js v5 (authjs.*) and legacy NextAuth v4 (next-auth.*) patterns.
+ */
+function isPkceCookie(cookieName: string): boolean {
+  const lowerName = cookieName.toLowerCase();
+  return (
+    lowerName.includes('pkce') ||
+    lowerName.includes('code_verifier') ||
+    lowerName.includes('code-verifier') ||
+    // Auth.js v5 patterns
+    lowerName.includes('authjs.pkce') ||
+    // Legacy NextAuth v4 patterns
+    lowerName.includes('next-auth.pkce')
+  );
+}
+
+/**
  * Strip PKCE cookies from the request to prevent "pkceCodeVerifier could not be parsed" error.
  *
- * Problem: Even with PKCE disabled (checks: ["state"]), NextAuth v5 still attempts to parse
+ * Problem: Even with PKCE disabled (checks: ["state"]), Auth.js v5 still attempts to parse
  * existing PKCE cookies when they exist on the request. Stale PKCE cookies from previous
  * auth attempts (or when AUTH_SECRET changed) cannot be decrypted and cause this error.
  *
- * Solution: Remove PKCE-related cookies from the request before NextAuth processes it.
- * This ensures that callback requests don't fail due to stale/corrupt PKCE cookies.
+ * The error "InvalidCheck: pkceCodeVerifier value could not be parsed" occurs when:
+ * 1. A PKCE cookie exists from a previous auth attempt
+ * 2. The AUTH_SECRET changed, making old encrypted cookies unreadable
+ * 3. The cookie was created when PKCE was enabled but now PKCE is disabled
+ *
+ * Solution: Remove ALL PKCE-related cookies from the request before Auth.js processes it.
+ * This includes cookies with both authjs.* and next-auth.* prefixes.
  */
 function stripPkceCookies(request: NextRequest): NextRequest {
   const url = new URL(request.url);
   const isCallback = url.pathname.includes('/callback') || url.searchParams.has('code');
 
-  if (!isCallback) {
-    return request;
+  // Log all cookies for debugging on callback requests
+  if (isCallback) {
+    const allCookies = request.cookies.getAll();
+    logger.info("AUTH_PKCE", "Callback request received - analyzing cookies", {
+      pathname: url.pathname,
+      totalCookies: allCookies.length,
+      cookieNames: allCookies.map(c => c.name),
+    });
   }
 
   // Get all cookies and filter out PKCE-related ones
   const cookies = request.cookies.getAll();
   const pkceCookieNames = cookies
-    .filter(c => c.name.includes('pkce') || c.name.includes('code_verifier'))
+    .filter(c => isPkceCookie(c.name))
     .map(c => c.name);
 
   if (pkceCookieNames.length === 0) {
+    if (isCallback) {
+      logger.info("AUTH_PKCE", "No PKCE cookies found to strip", {
+        pathname: url.pathname,
+      });
+    }
     return request;
   }
 
-  logger.info("AUTH_PKCE", `Stripping ${pkceCookieNames.length} PKCE cookie(s) from callback request`, {
+  logger.info("AUTH_PKCE", `Stripping ${pkceCookieNames.length} PKCE cookie(s) from request`, {
     cookieNames: pkceCookieNames,
     pathname: url.pathname,
+    isCallback,
   });
 
   // Rebuild the Cookie header without PKCE cookies
   const filteredCookies = cookies
-    .filter(c => !c.name.includes('pkce') && !c.name.includes('code_verifier'))
+    .filter(c => !isPkceCookie(c.name))
     .map(c => `${c.name}=${c.value}`)
     .join('; ');
 
