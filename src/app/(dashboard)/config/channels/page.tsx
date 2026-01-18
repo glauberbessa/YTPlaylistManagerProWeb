@@ -47,6 +47,7 @@ export default function ConfigChannelsPage() {
   const [enabledMap, setEnabledMap] = useState<Record<string, boolean>>({});
   const [sortField, setSortField] = useState<SortField>("subscribedAt");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
+  const [showOnlyActive, setShowOnlyActive] = useState(false);
 
   const { data: channels, isLoading } = useQuery({
     queryKey: ["channels"],
@@ -100,6 +101,11 @@ export default function ConfigChannelsPage() {
       return sortDirection === "asc" ? comparison : -comparison;
     });
   }, [channels, sortField, sortDirection]);
+
+  const visibleChannels = useMemo(() => {
+    if (!showOnlyActive) return sortedChannels;
+    return sortedChannels.filter((channel) => enabledMap[channel.id] ?? true);
+  }, [sortedChannels, enabledMap, showOnlyActive]);
 
   const handleToggle = (channelId: string, enabled: boolean) => {
     setEnabledMap((prev) => ({ ...prev, [channelId]: enabled }));
@@ -167,7 +173,17 @@ export default function ConfigChannelsPage() {
       </div>
 
       {/* Actions */}
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap items-center gap-4">
+        <div className="flex items-center gap-2">
+          <Switch
+            checked={showOnlyActive}
+            onCheckedChange={setShowOnlyActive}
+            id="show-only-active"
+          />
+          <label htmlFor="show-only-active" className="text-sm text-muted-foreground">
+            Apenas Ativas
+          </label>
+        </div>
         <Button variant="outline" onClick={handleEnableAll}>
           {UI_TEXT.config.enableAll}
         </Button>
@@ -217,12 +233,12 @@ export default function ConfigChannelsPage() {
                   Data de Inscrição
                   <SortIcon field="subscribedAt" />
                 </TableHead>
-                <TableHead className="text-center">Vídeos</TableHead>
+                <TableHead className="text-right">Vídeos</TableHead>
                 <TableHead className="text-right">Status</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {sortedChannels.map((channel) => (
+              {visibleChannels.map((channel) => (
                 <TableRow key={channel.id}>
                   <TableCell className="font-medium">
                     <span className="truncate block max-w-[300px]">
@@ -234,7 +250,7 @@ export default function ConfigChannelsPage() {
                       ? formatDate(channel.subscribedAt)
                       : "-"}
                   </TableCell>
-                  <TableCell className="text-center">
+                  <TableCell className="text-right">
                     {formatNumber(channel.videoCount)}
                   </TableCell>
                   <TableCell className="text-right">

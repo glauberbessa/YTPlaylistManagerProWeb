@@ -22,7 +22,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { ArrowUpDown, ExternalLink } from "lucide-react";
 import { Video } from "@/types/video";
-import { formatDuration, formatViewCount, formatDate, getLanguageName } from "@/lib/utils";
+import { cn, formatDuration, formatViewCount, formatDate, getLanguageName } from "@/lib/utils";
 import { UI_TEXT } from "@/lib/i18n";
 
 interface VideoTableProps {
@@ -133,6 +133,7 @@ export function VideoTable({
         header: ({ column }) => (
           <Button
             variant="ghost"
+            className="w-full justify-end"
             onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
           >
             {UI_TEXT.columns.duration}
@@ -140,12 +141,17 @@ export function VideoTable({
           </Button>
         ),
         cell: ({ row }) => formatDuration(row.original.durationInSeconds),
+        meta: {
+          headerClassName: "text-right",
+          cellClassName: "text-right tabular-nums",
+        },
       },
       {
         accessorKey: "viewCount",
         header: ({ column }) => (
           <Button
             variant="ghost"
+            className="w-full justify-end"
             onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
           >
             {UI_TEXT.columns.views}
@@ -153,6 +159,10 @@ export function VideoTable({
           </Button>
         ),
         cell: ({ row }) => formatViewCount(row.original.viewCount),
+        meta: {
+          headerClassName: "text-right",
+          cellClassName: "text-right tabular-nums",
+        },
       },
       {
         accessorKey: "publishedAt",
@@ -204,7 +214,10 @@ export function VideoTable({
           {table.getHeaderGroups().map((headerGroup) => (
             <TableRow key={headerGroup.id}>
               {headerGroup.headers.map((header) => (
-                <TableHead key={header.id}>
+                <TableHead
+                  key={header.id}
+                  className={cn(header.column.columnDef.meta?.headerClassName)}
+                >
                   {header.isPlaceholder
                     ? null
                     : flexRender(
@@ -224,7 +237,10 @@ export function VideoTable({
                 data-state={selectedVideos.has(row.original.id) && "selected"}
               >
                 {row.getVisibleCells().map((cell) => (
-                  <TableCell key={cell.id}>
+                  <TableCell
+                    key={cell.id}
+                    className={cn(cell.column.columnDef.meta?.cellClassName)}
+                  >
                     {flexRender(cell.column.columnDef.cell, cell.getContext())}
                   </TableCell>
                 ))}
