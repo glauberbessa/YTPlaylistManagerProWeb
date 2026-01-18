@@ -3,6 +3,7 @@ import GoogleProvider from "next-auth/providers/google";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import { prisma } from "./prisma";
 import { google } from "googleapis";
+import { logger, AuthFlowTracker, logEnvironmentInfo } from "./logger";
 
 // Get the auth secret with proper validation
 function getAuthSecret(): string {
@@ -48,10 +49,15 @@ async function refreshAccessToken(account: {
   id: string;
   refresh_token: string | null;
 }): Promise<string | null> {
-  console.log("[Auth] Attempting to refresh access token for account:", account.id);
+  logger.info("GOOGLE_OAUTH", "Attempting to refresh access token", {
+    accountId: account.id,
+    hasRefreshToken: !!account.refresh_token,
+  });
 
   if (!account.refresh_token) {
-    console.error("[Auth] No refresh token available for account:", account.id);
+    logger.error("GOOGLE_OAUTH", "No refresh token available", undefined, {
+      accountId: account.id,
+    });
     return null;
   }
 
@@ -62,11 +68,17 @@ async function refreshAccessToken(account: {
     );
     oauth2Client.setCredentials({ refresh_token: account.refresh_token });
 
-    console.log("[Auth] Calling Google OAuth to refresh token...");
+    logger.info("GOOGLE_OAUTH", "Calling Google OAuth to refresh token...");
+    const startTime = Date.now();
     const { credentials } = await oauth2Client.refreshAccessToken();
+    const elapsed = Date.now() - startTime;
 
     if (credentials.access_token) {
-      console.log("[Auth] Got new access token, updating database...");
+      logger.info("GOOGLE_OAUTH", "Got new access token, updating database", {
+        elapsed: `${elapsed}ms`,
+        hasExpiryDate: !!credentials.expiry_date,
+      });
+
       await prisma.account.update({
         where: { id: account.id },
         data: {
@@ -77,13 +89,24 @@ async function refreshAccessToken(account: {
         },
       });
 
-      console.log("[Auth] Access token refreshed successfully");
+      logger.googleOAuth("Token refresh completed", true, {
+        accountId: account.id,
+        newTokenLength: credentials.access_token.length,
+      });
       return credentials.access_token;
     } else {
-      console.error("[Auth] Google returned no access_token in credentials");
+      logger.error("GOOGLE_OAUTH", "Google returned no access_token in credentials", undefined, {
+        elapsed: `${elapsed}ms`,
+        credentialsKeys: Object.keys(credentials),
+      });
     }
   } catch (error) {
-    console.error("[Auth] Error refreshing access token:", error);
+    logger.error(
+      "GOOGLE_OAUTH",
+      "Token refresh failed",
+      error instanceof Error ? error : undefined,
+      { accountId: account.id }
+    );
   }
 
   return null;
@@ -95,23 +118,31 @@ const cookiePrefix = useSecureCookies ? "__Secure-" : "";
 
 // Debug logging helper
 function logAuthConfig() {
-  console.log(`\n${"#".repeat(80)}`);
-  console.log(`[AUTH-CONFIG] NextAuth Configuration Initialized`);
-  console.log(`${"#".repeat(80)}`);
-  console.log(`[AUTH-CONFIG] Cookie Settings:`);
-  console.log(`  - useSecureCookies: ${useSecureCookies}`);
-  console.log(`  - cookiePrefix: "${cookiePrefix}"`);
-  console.log(`  - State cookie name: ${cookiePrefix}next-auth.state`);
-  console.log(`[AUTH-CONFIG] Provider Settings:`);
-  console.log(`  - Provider: Google OAuth`);
-  console.log(`  - Checks: ["state"] (PKCE disabled)`);
-  console.log(`  - PKCE cookies stripped in route handler`);
-  console.log(`  - Session Strategy: JWT`);
-  console.log(`${"#".repeat(80)}\n`);
+  logger.info("AUTH", "NextAuth Configuration Initialized", {
+    cookieSettings: {
+      useSecureCookies,
+      cookiePrefix,
+      stateCookieName: `${cookiePrefix}next-auth.state`,
+      sessionCookieName: `${cookiePrefix}next-auth.session-token`,
+    },
+    providerSettings: {
+      provider: "Google OAuth",
+      checks: ["state"],
+      pkceDisabled: true,
+      sessionStrategy: "JWT",
+    },
+    environment: {
+      NODE_ENV: process.env.NODE_ENV,
+      isVercel: !!process.env.VERCEL,
+      hasNextAuthUrl: !!process.env.NEXTAUTH_URL,
+      hasAuthSecret: !!process.env.AUTH_SECRET || !!process.env.NEXTAUTH_SECRET,
+    },
+  });
 }
 
-// Log config on module load
+// Log config and environment on module load
 logAuthConfig();
+logEnvironmentInfo();
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(prisma),
@@ -212,54 +243,110 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   },
   callbacks: {
     async signIn({ user, account }) {
-      console.log(`\n${"*".repeat(80)}`);
-      console.log(`[AUTH-CALLBACK] signIn callback invoked`);
-      console.log(`${"*".repeat(80)}`);
-      console.log(`[AUTH-CALLBACK] SignIn Details:`);
-      console.log(`  - User ID: ${user?.id || 'undefined'}`);
-      console.log(`  - User Email: ${user?.email || 'undefined'}`);
-      console.log(`  - Provider: ${account?.provider || 'undefined'}`);
-      console.log(`  - Has Access Token: ${!!account?.access_token}`);
-      console.log(`  - Has Refresh Token: ${!!account?.refresh_token}`);
-      console.log(`  - Token Expires At: ${account?.expires_at || 'undefined'}`);
-      console.log(`${"*".repeat(80)}\n`);
+      const flowTracker = new AuthFlowTracker();
+
+      logger.authCallback("signIn callback invoked", true, {
+        traceId: flowTracker.getTraceId(),
+        userId: user?.id,
+        userEmail: user?.email,
+        provider: account?.provider,
+        hasAccessToken: !!account?.access_token,
+        accessTokenLength: account?.access_token?.length || 0,
+        hasRefreshToken: !!account?.refresh_token,
+        refreshTokenLength: account?.refresh_token?.length || 0,
+        tokenExpiresAt: account?.expires_at,
+        tokenScope: account?.scope,
+      });
+
+      flowTracker.step("SignIn callback started", true, {
+        userId: user?.id,
+        provider: account?.provider,
+      });
 
       if (account?.provider === "google" && account.access_token) {
+        flowTracker.step("Google provider detected, fetching YouTube Channel", true);
+
         try {
-          console.log(`[AUTH-CALLBACK] Fetching YouTube Channel ID...`);
-          // Buscar Channel ID do YouTube
+          logger.info("YOUTUBE_API", "Fetching YouTube Channel ID for user", {
+            userEmail: user.email,
+            accessTokenPreview: `${account.access_token.substring(0, 20)}...`,
+          });
+
           const oauth2Client = new google.auth.OAuth2();
           oauth2Client.setCredentials({ access_token: account.access_token });
 
           const youtube = google.youtube({ version: "v3", auth: oauth2Client });
+          const startTime = Date.now();
           const response = await youtube.channels.list({
             part: ["id"],
             mine: true,
           });
+          const elapsed = Date.now() - startTime;
 
           const channelId = response.data.items?.[0]?.id;
-          console.log(`[AUTH-CALLBACK] YouTube Channel ID found: ${channelId || 'none'}`);
+
+          logger.youtubeApi("Fetch user channel", true, {
+            channelId,
+            itemsCount: response.data.items?.length || 0,
+            elapsed: `${elapsed}ms`,
+          });
+
+          flowTracker.step("YouTube Channel ID fetched", !!channelId, {
+            channelId,
+            elapsed: `${elapsed}ms`,
+          });
+
           if (channelId && user.email) {
             await prisma.user.update({
               where: { email: user.email },
               data: { youtubeChannelId: channelId },
             });
-            console.log(`[AUTH-CALLBACK] Updated user with YouTube Channel ID`);
+
+            logger.database("Update user with YouTube Channel ID", true, {
+              userEmail: user.email,
+              channelId,
+            });
+
+            flowTracker.step("Database updated with channel ID", true);
           }
         } catch (error) {
-          console.error("[AUTH-CALLBACK] Error fetching YouTube Channel ID:", error);
+          logger.error(
+            "AUTH_CALLBACK",
+            "Failed to fetch YouTube Channel ID",
+            error instanceof Error ? error : undefined,
+            { userEmail: user.email }
+          );
+          flowTracker.step("YouTube Channel fetch failed", false, {
+            error: error instanceof Error ? error.message : "Unknown error",
+          });
         }
       }
-      console.log(`[AUTH-CALLBACK] signIn callback completed successfully - returning true`);
+
+      flowTracker.complete(true, { result: "signIn allowed" });
+
+      logger.authCallback("signIn callback completed", true, {
+        result: "allowed",
+        traceId: flowTracker.getTraceId(),
+      });
+
       return true;
     },
     async jwt({ token, user, account }) {
+      logger.jwt("JWT callback invoked", {
+        hasUser: !!user,
+        hasAccount: !!account,
+        tokenSub: token.sub,
+        hasExistingUserId: !!token.userId,
+        hasExistingAccessToken: !!token.accessToken,
+      });
+
       // Initial sign in - persist user data in token
       if (user) {
-        console.log("[Auth/JWT] Initial sign in, user object:", {
-          hasId: !!user.id,
-          hasEmail: !!user.email,
-          id: user.id,
+        logger.jwt("Initial sign in - populating token with user data", {
+          userId: user.id,
+          userEmail: user.email,
+          hasName: !!user.name,
+          hasImage: !!user.image,
         });
 
         if (user.id) {
@@ -278,7 +365,15 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
       // Persist account data on initial sign in
       if (account) {
-        console.log("[Auth/JWT] Storing account tokens in JWT");
+        logger.jwt("Storing account tokens in JWT", {
+          provider: account.provider,
+          hasAccessToken: !!account.access_token,
+          accessTokenLength: account.access_token?.length || 0,
+          hasRefreshToken: !!account.refresh_token,
+          expiresAt: account.expires_at,
+          providerAccountId: account.providerAccountId,
+        });
+
         token.accessToken = account.access_token;
         token.refreshToken = account.refresh_token;
         token.expiresAt = account.expires_at;
@@ -287,33 +382,62 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
       // If we still don't have userId but have email, try to fetch from DB
       if (!token.userId && token.email) {
-        console.log("[Auth/JWT] No userId in token, trying to fetch by email:", token.email);
+        logger.jwt("No userId in token, attempting to fetch by email", {
+          email: token.email,
+        });
+
         try {
           const dbUser = await prisma.user.findUnique({
             where: { email: token.email as string },
           });
           if (dbUser) {
-            console.log("[Auth/JWT] Found user by email, setting userId:", dbUser.id);
+            logger.jwt("Found user by email, setting userId", {
+              userId: dbUser.id,
+              email: token.email,
+            });
             token.userId = dbUser.id;
+          } else {
+            logger.warn("AUTH_JWT", "User not found in database by email", {
+              email: token.email,
+            });
           }
         } catch (error) {
-          console.error("[Auth/JWT] Error fetching user by email:", error);
+          logger.error(
+            "AUTH_JWT",
+            "Database query failed when fetching user by email",
+            error instanceof Error ? error : undefined,
+            { email: token.email }
+          );
         }
       }
 
       // Fallback: use token.sub as userId if still missing
       if (!token.userId && token.sub) {
-        console.log("[Auth/JWT] Using token.sub as userId fallback:", token.sub);
+        logger.jwt("Using token.sub as userId fallback", {
+          tokenSub: token.sub,
+        });
         token.userId = token.sub;
       }
 
       // Check if token needs refresh
-      if (token.expiresAt && typeof token.expiresAt === 'number') {
+      if (token.expiresAt && typeof token.expiresAt === "number") {
         const now = Math.floor(Date.now() / 1000);
         const isExpired = token.expiresAt < now - 60;
+        const expiresIn = token.expiresAt - now;
+
+        logger.jwt("Checking token expiration", {
+          expiresAt: token.expiresAt,
+          now,
+          isExpired,
+          expiresIn: `${expiresIn}s`,
+          hasRefreshToken: !!token.refreshToken,
+        });
 
         if (isExpired && token.refreshToken) {
-          console.log("[Auth/JWT] Token expired, refreshing...");
+          logger.jwt("Token expired, initiating refresh", {
+            accountId: token.accountId,
+          });
+
           try {
             // Find the account in DB to get its ID for update
             const dbAccount = await prisma.account.findFirst({
@@ -324,6 +448,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             });
 
             if (dbAccount) {
+              logger.jwt("Found account in database, refreshing token");
+
               const newAccessToken = await refreshAccessToken({
                 id: dbAccount.id,
                 refresh_token: token.refreshToken as string,
@@ -333,27 +459,52 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
                 token.accessToken = newAccessToken;
                 // Update expiry (Google tokens typically last 1 hour)
                 token.expiresAt = Math.floor(Date.now() / 1000) + 3600;
+
+                logger.jwt("Token refreshed successfully", {
+                  newTokenLength: newAccessToken.length,
+                  newExpiresAt: token.expiresAt,
+                });
+              } else {
+                logger.error("AUTH_JWT", "Token refresh returned null");
               }
+            } else {
+              logger.error("AUTH_JWT", "Account not found in database for refresh", undefined, {
+                providerAccountId: token.accountId,
+              });
             }
           } catch (error) {
-            console.error("[Auth/JWT] Token refresh failed:", error);
+            logger.error(
+              "AUTH_JWT",
+              "Token refresh failed with exception",
+              error instanceof Error ? error : undefined
+            );
           }
         }
       }
 
+      logger.jwt("JWT callback completed", {
+        hasUserId: !!token.userId,
+        hasAccessToken: !!token.accessToken,
+        accessTokenLength: typeof token.accessToken === "string" ? token.accessToken.length : 0,
+      });
+
       return token;
     },
     async session({ session, token }) {
-      console.log("[Auth/Session] Building session from JWT, token has:", {
+      logger.session("Building session from JWT", {
         hasUserId: !!token.userId,
+        userId: token.userId,
         hasEmail: !!token.email,
+        email: token.email,
         hasAccessToken: !!token.accessToken,
+        accessTokenLength: typeof token.accessToken === "string" ? token.accessToken.length : 0,
         tokenSub: token.sub,
       });
 
       // CRITICAL: Ensure session.user object exists before assigning properties
       // In NextAuth v5 with JWT strategy, session.user may be undefined or empty
       if (!session.user) {
+        logger.session("Session.user was undefined, initializing empty user object");
         session.user = {
           id: "",
         } as typeof session.user;
@@ -367,25 +518,47 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       // Helper function to fetch user with account data
       async function fetchUserWithAccount(whereClause: { id?: string; email?: string }) {
         try {
-          return await prisma.user.findFirst({
+          const startTime = Date.now();
+          const user = await prisma.user.findFirst({
             where: whereClause,
             include: { accounts: true },
           });
+          const elapsed = Date.now() - startTime;
+
+          logger.database("Fetch user with account", !!user, {
+            whereClause,
+            found: !!user,
+            elapsed: `${elapsed}ms`,
+            accountsCount: user?.accounts?.length || 0,
+          });
+
+          return user;
         } catch (error) {
-          console.error("[Auth/Session] DB query failed:", error);
+          logger.error(
+            "DATABASE",
+            "Failed to fetch user with account",
+            error instanceof Error ? error : undefined,
+            { whereClause }
+          );
           return null;
         }
       }
 
       // STRATEGY 1: Use userId from JWT token (primary method)
       if (token.userId) {
-        console.log("[Auth/Session] Using userId from JWT:", token.userId);
+        logger.session("STRATEGY 1: Using userId from JWT", {
+          userId: token.userId,
+        });
+
         session.user.id = token.userId as string;
 
         // Fetch additional user data from DB
         const dbUser = await fetchUserWithAccount({ id: token.userId as string });
         if (dbUser) {
           session.user.youtubeChannelId = dbUser.youtubeChannelId;
+          logger.session("Fetched youtubeChannelId from database", {
+            youtubeChannelId: dbUser.youtubeChannelId,
+          });
         }
 
         // Use access token from JWT
@@ -393,14 +566,22 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           session.accessToken = token.accessToken as string;
         }
 
-        console.log("[Auth/Session] Session populated from JWT token");
+        logger.session("Session populated successfully via STRATEGY 1 (JWT userId)", {
+          userId: session.user.id,
+          hasAccessToken: !!session.accessToken,
+          hasYoutubeChannelId: !!session.user.youtubeChannelId,
+        });
+
         return session;
       }
 
       // STRATEGY 1.5: Use token.sub as userId if userId is missing
       // In NextAuth v5 with JWT strategy, token.sub often contains the user ID
       if (token.sub && !token.userId) {
-        console.log("[Auth/Session] Using token.sub as userId:", token.sub);
+        logger.session("STRATEGY 1.5: Using token.sub as userId", {
+          tokenSub: token.sub,
+        });
+
         const subUser = await fetchUserWithAccount({ id: token.sub });
         if (subUser) {
           session.user.id = subUser.id;
@@ -413,19 +594,33 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
               session.accessToken = account.access_token;
             }
           }
-          console.log("[Auth/Session] Session populated from token.sub");
+
+          logger.session("Session populated successfully via STRATEGY 1.5 (token.sub)", {
+            userId: session.user.id,
+            hasAccessToken: !!session.accessToken,
+          });
+
           return session;
+        } else {
+          logger.warn("AUTH_SESSION", "STRATEGY 1.5 failed: User not found by token.sub", {
+            tokenSub: token.sub,
+          });
         }
       }
 
       // STRATEGY 2: Fallback - fetch by email from token or session
       const email = (token.email as string) || session?.user?.email;
       if (email) {
-        console.log("[Auth/Session] Trying email fallback:", email);
+        logger.session("STRATEGY 2: Trying email fallback", { email });
+
         const emailUser = await fetchUserWithAccount({ email });
 
         if (emailUser) {
-          console.log("[Auth/Session] Found user by email:", emailUser.id);
+          logger.session("STRATEGY 2: Found user by email", {
+            userId: emailUser.id,
+            email,
+          });
+
           session.user.id = emailUser.id;
           session.user.youtubeChannelId = emailUser.youtubeChannelId;
 
@@ -438,6 +633,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
               const now = Math.floor(Date.now() / 1000);
               const isExpired = (account.expires_at || 0) < now - 60;
 
+              logger.session("Checking account token expiration", {
+                expiresAt: account.expires_at,
+                isExpired,
+                hasRefreshToken: !!account.refresh_token,
+              });
+
               if (isExpired && account.refresh_token) {
                 const newToken = await refreshAccessToken({
                   id: account.id,
@@ -449,12 +650,21 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
               }
             }
           }
+
+          logger.session("Session populated successfully via STRATEGY 2 (email)", {
+            userId: session.user.id,
+            hasAccessToken: !!session.accessToken,
+          });
+
           return session;
+        } else {
+          logger.warn("AUTH_SESSION", "STRATEGY 2 failed: User not found by email", { email });
         }
       }
 
       // STRATEGY 3: Last resort - try to find any recent user with Google account
-      console.log("[Auth/Session] Email fallback failed, trying recent user lookup...");
+      logger.session("STRATEGY 3: Attempting recent user lookup (last resort)");
+
       try {
         const recentUser = await prisma.user.findFirst({
           where: {
@@ -465,11 +675,15 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             },
           },
           include: { accounts: true },
-          orderBy: { updatedAt: 'desc' },
+          orderBy: { updatedAt: "desc" },
         });
 
         if (recentUser) {
-          console.log("[Auth/Session] Found recent user:", recentUser.id);
+          logger.session("STRATEGY 3: Found recent Google user", {
+            userId: recentUser.id,
+            email: recentUser.email,
+          });
+
           session.user.id = recentUser.id;
           session.user.youtubeChannelId = recentUser.youtubeChannelId;
 
@@ -488,31 +702,72 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
               session.accessToken = account.access_token;
             }
           }
+
+          logger.session("Session populated successfully via STRATEGY 3 (recent user)", {
+            userId: session.user.id,
+            hasAccessToken: !!session.accessToken,
+          });
+
           return session;
         }
       } catch (error) {
-        console.error("[Auth/Session] Recent user lookup failed:", error);
+        logger.error(
+          "AUTH_SESSION",
+          "STRATEGY 3 failed with exception",
+          error instanceof Error ? error : undefined
+        );
       }
 
-      console.error("[Auth/Session] All strategies failed - returning incomplete session");
+      logger.critical("AUTH_SESSION", "ALL STRATEGIES FAILED - returning incomplete session", undefined, {
+        sessionUserId: session.user?.id,
+        sessionEmail: session.user?.email,
+        tokenUserId: token.userId,
+        tokenSub: token.sub,
+        tokenEmail: token.email,
+        hasAccessToken: !!token.accessToken,
+      });
+
       return session;
     },
   },
   events: {
     async signIn({ user, account }) {
+      logger.info("AUTH", "signIn event triggered", {
+        userId: user.id,
+        userEmail: user.email,
+        provider: account?.provider,
+        hasAccessToken: !!account?.access_token,
+        hasRefreshToken: !!account?.refresh_token,
+      });
+
       // Atualizar tokens quando o usuário faz login novamente
       if (account && user.id) {
-        await prisma.account.updateMany({
-          where: {
+        try {
+          const result = await prisma.account.updateMany({
+            where: {
+              userId: user.id,
+              provider: account.provider,
+            },
+            data: {
+              access_token: account.access_token,
+              refresh_token: account.refresh_token,
+              expires_at: account.expires_at,
+            },
+          });
+
+          logger.database("Update account tokens on signIn", true, {
             userId: user.id,
             provider: account.provider,
-          },
-          data: {
-            access_token: account.access_token,
-            refresh_token: account.refresh_token,
-            expires_at: account.expires_at,
-          },
-        });
+            updatedCount: result.count,
+          });
+        } catch (error) {
+          logger.error(
+            "DATABASE",
+            "Failed to update account tokens on signIn",
+            error instanceof Error ? error : undefined,
+            { userId: user.id, provider: account.provider }
+          );
+        }
       }
     },
   },
@@ -520,15 +775,32 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
 // Helper para obter sessão autenticada
 export async function getAuthSession() {
+  logger.debug("AUTH", "getAuthSession called");
   const session = await auth();
+
+  logger.debug("AUTH", "getAuthSession result", {
+    hasSession: !!session,
+    hasUser: !!session?.user,
+    userId: session?.user?.id,
+    hasAccessToken: !!session?.accessToken,
+  });
+
   return session;
 }
 
 // Helper para verificar se usuário está autenticado
 export async function requireAuth() {
+  logger.debug("AUTH", "requireAuth called");
   const session = await auth();
+
   if (!session?.user) {
+    logger.warn("AUTH", "requireAuth failed - no authenticated user");
     throw new Error("Não autenticado");
   }
+
+  logger.debug("AUTH", "requireAuth succeeded", {
+    userId: session.user.id,
+  });
+
   return session;
 }
