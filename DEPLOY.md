@@ -204,6 +204,7 @@ npx prisma studio
 - Execute `npm run build` localmente primeiro
 - Verifique se todas as variáveis de ambiente estão configuradas
 - Verifique os logs de build no dashboard do Vercel
+- Por padrão, o build no Vercel ignora migrations. Para habilitar, defina `RUN_DB_MIGRATIONS=1`.
 
 ---
 

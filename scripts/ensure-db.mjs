@@ -41,6 +41,14 @@ async function checkTableExists() {
 }
 
 async function main() {
+  if (process.env.VERCEL && !process.env.RUN_DB_MIGRATIONS) {
+    console.log("Detected Vercel environment. Skipping database migrations.");
+    console.log(
+      "Set RUN_DB_MIGRATIONS=1 to enable migrations during the build.",
+    );
+    return;
+  }
+
   if (!process.env.DATABASE_URL) {
     console.log("DATABASE_URL is not set. Skipping database migrations.");
     console.log("Migrations will be applied when the application starts or via manual deploy.");
