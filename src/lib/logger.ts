@@ -215,39 +215,6 @@ export const logger = {
   ) => log("critical", category, message, context, error || undefined),
 
   /**
-   * Log the start of an authentication flow step
-   */
-  authStep: (step: string, details?: Record<string, unknown>) =>
-    log("info", "AUTH", `[STEP] ${step}`, details),
-
-  /**
-   * Log auth callback events
-   */
-  authCallback: (
-    event: string,
-    success: boolean,
-    details?: Record<string, unknown>
-  ) =>
-    log(
-      success ? "info" : "error",
-      "AUTH_CALLBACK",
-      `[${success ? "SUCCESS" : "FAILED"}] ${event}`,
-      details
-    ),
-
-  /**
-   * Log JWT operations
-   */
-  jwt: (operation: string, details?: Record<string, unknown>) =>
-    log("info", "AUTH_JWT", `[JWT] ${operation}`, details),
-
-  /**
-   * Log session operations
-   */
-  session: (operation: string, details?: Record<string, unknown>) =>
-    log("info", "AUTH_SESSION", `[SESSION] ${operation}`, details),
-
-  /**
    * Log Google OAuth operations
    */
   googleOAuth: (operation: string, success: boolean, details?: Record<string, unknown>) =>
@@ -290,7 +257,7 @@ export const logger = {
       `[${success ? "SUCCESS" : "FAILED"}] ${operation}`,
       details,
       error
-    ),
+  ),
 };
 
 /**
@@ -365,69 +332,6 @@ export function getLogSummary(): Record<LogCategory, Record<LogLevel, number>> {
 }
 
 /**
- * Log helper for tracking authentication flow
- */
-export class AuthFlowTracker {
-  private traceId: string;
-  private startTime: number;
-  private steps: Array<{
-    step: string;
-    timestamp: number;
-    success: boolean;
-    details?: Record<string, unknown>;
-  }>;
-
-  constructor() {
-    this.traceId = generateTraceId();
-    this.startTime = Date.now();
-    this.steps = [];
-    setTraceId(this.traceId);
-  }
-
-  step(name: string, success: boolean, details?: Record<string, unknown>): void {
-    const elapsed = Date.now() - this.startTime;
-    this.steps.push({
-      step: name,
-      timestamp: elapsed,
-      success,
-      details,
-    });
-
-    logger.authStep(`${name} (${elapsed}ms)`, {
-      success,
-      elapsed: `${elapsed}ms`,
-      ...details,
-    });
-  }
-
-  complete(success: boolean, details?: Record<string, unknown>): void {
-    const totalTime = Date.now() - this.startTime;
-
-    log(
-      success ? "info" : "error",
-      "AUTH",
-      `[FLOW COMPLETE] ${success ? "SUCCESS" : "FAILED"} (${totalTime}ms)`,
-      {
-        traceId: this.traceId,
-        totalTime: `${totalTime}ms`,
-        steps: this.steps,
-        ...details,
-      }
-    );
-
-    clearTraceId();
-  }
-
-  getTraceId(): string {
-    return this.traceId;
-  }
-
-  getSteps(): typeof this.steps {
-    return this.steps;
-  }
-}
-
-/**
  * Environment info logger - logs key environment variables
  */
 export function logEnvironmentInfo(): void {
@@ -448,7 +352,4 @@ export function logEnvironmentInfo(): void {
   logger.info("SYSTEM", "Environment Configuration", env);
 }
 
-// Log environment info on module load in production
-if (process.env.NODE_ENV === "production" || process.env.VERCEL) {
-  logEnvironmentInfo();
-}
+// Environment info is available via logEnvironmentInfo when needed.
