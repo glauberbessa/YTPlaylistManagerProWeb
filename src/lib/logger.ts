@@ -307,7 +307,9 @@ export function getStoredLogs(
     logs = logStore.get(category) || [];
   } else {
     // Get all logs from all categories
-    for (const categoryLogs of logStore.values()) {
+    // Use Array.from to convert iterator for compatibility
+    const allCategories = Array.from(logStore.values());
+    for (const categoryLogs of allCategories) {
       logs.push(...categoryLogs);
     }
   }
@@ -343,7 +345,9 @@ export function clearStoredLogs(): void {
 export function getLogSummary(): Record<LogCategory, Record<LogLevel, number>> {
   const summary: Record<string, Record<string, number>> = {};
 
-  for (const [category, logs] of logStore.entries()) {
+  // Use Array.from to convert iterator for compatibility
+  const entries = Array.from(logStore.entries());
+  for (const [category, logs] of entries) {
     summary[category] = {
       debug: 0,
       info: 0,
