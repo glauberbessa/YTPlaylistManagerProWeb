@@ -4,7 +4,6 @@ import { useState, useMemo, useCallback, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { ChannelSelector, AssignDialog } from "@/components/channels";
 import { PlaylistSelector, VideoGrid, VideoList } from "@/components/playlists";
 import { VideoFilters } from "@/components/playlists/VideoFilters";
@@ -14,7 +13,7 @@ import { useChannelVideos } from "@/hooks/useChannelVideos";
 import { useVideoFilters } from "@/hooks/useVideoFilters";
 import { useFilterStore } from "@/stores/filterStore";
 import { UI_TEXT } from "@/lib/i18n";
-import { AlertTriangle, Plus, Radio } from "lucide-react";
+import { Plus, Radio } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import {
   Select,
@@ -143,16 +142,6 @@ export default function ChannelsPage() {
         <Radio className="h-8 w-8 text-primary" />
         <h1 className="text-2xl font-bold">{UI_TEXT.channels.title}</h1>
       </div>
-
-      {/* Warning */}
-      <Alert variant="destructive" className="border-yellow-500 bg-yellow-50 text-yellow-900">
-        <AlertTriangle className="h-4 w-4" />
-        <AlertTitle>Atenção: Custo alto de quota</AlertTitle>
-        <AlertDescription>
-          Buscar vídeos de um canal consome <strong>100 unidades</strong> de quota por vez.
-          Use com moderação.
-        </AlertDescription>
-      </Alert>
 
       {/* Selectors */}
       <div className="grid gap-4 md:grid-cols-2">
