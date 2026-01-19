@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { ChannelSelector, AssignDialog } from "@/components/channels";
-import { PlaylistSelector } from "@/components/playlists";
+import { PlaylistSelector, VideoGrid, VideoList } from "@/components/playlists";
 import { VideoFilters } from "@/components/playlists/VideoFilters";
 import { VideoTable } from "@/components/playlists/VideoTable";
 import { StatsBar } from "@/components/playlists/StatsBar";
@@ -16,6 +16,13 @@ import { useFilterStore } from "@/stores/filterStore";
 import { UI_TEXT } from "@/lib/i18n";
 import { AlertTriangle, Plus, Radio } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 export default function ChannelsPage() {
   const { toast } = useToast();
@@ -24,6 +31,8 @@ export default function ChannelsPage() {
   const [selectedVideos, setSelectedVideos] = useState<Set<string>>(new Set());
   const [assignDialogOpen, setAssignDialogOpen] = useState(false);
   const [visibleCount, setVisibleCount] = useState(150);
+  const [layout, setLayout] = useState<"grid" | "table" | "list">("grid");
+  const [isMobile, setIsMobile] = useState(false);
 
   const { filter, resetFilters } = useFilterStore();
 
@@ -36,12 +45,33 @@ export default function ChannelsPage() {
   const { filteredVideos, availableLanguages } = useVideoFilters(videos, filter);
 
   useEffect(() => {
+    const media = window.matchMedia("(max-width: 640px)");
+    const handleChange = (event: MediaQueryListEvent | MediaQueryList) => {
+      setIsMobile(event.matches);
+      if (event.matches) {
+        setLayout("list");
+      }
+    };
+
+    handleChange(media);
+    media.addEventListener("change", handleChange);
+    return () => media.removeEventListener("change", handleChange);
+  }, []);
+
+  useEffect(() => {
     setVisibleCount(150);
   }, [selectedChannelId, videos.length, filter]);
 
   const visibleVideos = useMemo(() => {
     return filteredVideos.slice(0, visibleCount);
   }, [filteredVideos, visibleCount]);
+
+  const visibleVideosWithIds = useMemo(() => {
+    return visibleVideos.map((video) => ({
+      ...video,
+      id: video.videoId || video.id,
+    }));
+  }, [visibleVideos]);
 
   const handleToggleSelect = useCallback((videoId: string) => {
     setSelectedVideos((prev) => {
@@ -57,12 +87,12 @@ export default function ChannelsPage() {
 
   const handleToggleSelectAll = useCallback(() => {
     setSelectedVideos((prev) => {
-      if (prev.size === visibleVideos.length) {
+      if (prev.size === visibleVideosWithIds.length) {
         return new Set();
       }
-      return new Set(visibleVideos.map((v) => v.videoId));
+      return new Set(visibleVideosWithIds.map((v) => v.id));
     });
-  }, [visibleVideos]);
+  }, [visibleVideosWithIds]);
 
   const handleLoadMore = () => {
     setVisibleCount((prev) => Math.min(prev + 50, filteredVideos.length));
@@ -183,13 +213,48 @@ export default function ChannelsPage() {
                 selectedVideos={selectedVideos}
               />
 
-              {/* Table - usando videoId ao invés de id para canais */}
-              <VideoTable
-                videos={visibleVideos.map((v) => ({ ...v, id: v.videoId }))}
-                selectedVideos={selectedVideos}
-                onToggleSelect={handleToggleSelect}
-                onToggleSelectAll={handleToggleSelectAll}
-              />
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <span className="text-sm text-muted-foreground">Layouts</span>
+                <Select
+                  value={layout}
+                  onValueChange={(value) =>
+                    setLayout(value as "grid" | "table" | "list")
+                  }
+                  disabled={isMobile}
+                >
+                  <SelectTrigger className="w-[180px]">
+                    <SelectValue placeholder="Selecione o layout" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="grid">{UI_TEXT.viewMode.grid}</SelectItem>
+                    <SelectItem value="list">{UI_TEXT.viewMode.list}</SelectItem>
+                    <SelectItem value="table">{UI_TEXT.viewMode.table}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {layout === "table" ? (
+                <VideoTable
+                  videos={visibleVideosWithIds}
+                  selectedVideos={selectedVideos}
+                  onToggleSelect={handleToggleSelect}
+                  onToggleSelectAll={handleToggleSelectAll}
+                />
+              ) : layout === "list" ? (
+                <VideoList
+                  videos={visibleVideosWithIds}
+                  selectedVideos={selectedVideos}
+                  onToggleSelect={handleToggleSelect}
+                  onToggleSelectAll={handleToggleSelectAll}
+                />
+              ) : (
+                <VideoGrid
+                  videos={visibleVideosWithIds}
+                  selectedVideos={selectedVideos}
+                  onToggleSelect={handleToggleSelect}
+                  onToggleSelectAll={handleToggleSelectAll}
+                />
+              )}
               {visibleVideos.length < filteredVideos.length && (
                 <div className="flex justify-center">
                   <Button variant="outline" onClick={handleLoadMore}>

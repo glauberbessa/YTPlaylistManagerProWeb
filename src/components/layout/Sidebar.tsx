@@ -15,7 +15,6 @@ import {
 import { cn } from "@/lib/utils";
 import { UI_TEXT } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
 import { useSidebar } from "./SidebarContext";
 import {
   Tooltip,
@@ -58,14 +57,7 @@ interface SidebarProps {
 
 export function Sidebar({ showToggle = true }: SidebarProps) {
   const pathname = usePathname();
-  const { isCollapsed, toggleSidebar, setCollapsed, autoCollapse, setAutoCollapse } =
-    useSidebar();
-
-  const handleLinkClick = () => {
-    if (autoCollapse && !isCollapsed) {
-      setCollapsed(true);
-    }
-  };
+  const { isCollapsed, toggleSidebar } = useSidebar();
 
   return (
     <TooltipProvider delayDuration={0}>
@@ -89,7 +81,6 @@ export function Sidebar({ showToggle = true }: SidebarProps) {
               <Link
                 key={item.name}
                 href={item.href}
-                onClick={handleLinkClick}
                 className={cn(
                   "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
                   isActive
@@ -119,17 +110,6 @@ export function Sidebar({ showToggle = true }: SidebarProps) {
         </nav>
 
         <div className="border-t p-2 space-y-2">
-          <div className="flex items-center justify-between gap-2 px-2 py-2">
-            {!isCollapsed && (
-              <span className="text-xs text-muted-foreground">Auto colapsar</span>
-            )}
-            <Switch
-              checked={autoCollapse}
-              onCheckedChange={setAutoCollapse}
-              aria-label="Auto colapsar menu lateral"
-            />
-          </div>
-
           {/* Toggle Button */}
           {showToggle && (
             <Tooltip>
