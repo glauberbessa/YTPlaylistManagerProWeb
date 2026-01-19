@@ -18,7 +18,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { ArrowUpDown, ExternalLink } from "lucide-react";
 import { Video } from "@/types/video";
@@ -47,24 +46,6 @@ export function VideoTable({
 
   const columns = useMemo<ColumnDef<Video>[]>(
     () => [
-      {
-        id: "select",
-        header: () => (
-          <Checkbox
-            checked={allSelected}
-            onCheckedChange={onToggleSelectAll}
-            aria-label="Selecionar todos"
-          />
-        ),
-        cell: ({ row }) => (
-          <Checkbox
-            checked={selectedVideos.has(row.original.id)}
-            onCheckedChange={() => onToggleSelect(row.original.id)}
-            aria-label="Selecionar vídeo"
-          />
-        ),
-        enableSorting: false,
-      },
       {
         id: "thumbnail",
         header: UI_TEXT.columns.thumbnail,
@@ -103,6 +84,7 @@ export function VideoTable({
               href={`https://www.youtube.com/watch?v=${row.original.videoId}`}
               target="_blank"
               rel="noopener noreferrer"
+              onClick={(event) => event.stopPropagation()}
               className="flex items-center gap-1 hover:text-primary"
             >
               <span className="truncate">{row.original.title}</span>
@@ -195,7 +177,7 @@ export function VideoTable({
             : "Desconhecido",
       },
     ],
-    [allSelected, onToggleSelect, onToggleSelectAll, selectedVideos]
+    []
   );
 
   const table = useReactTable({
@@ -208,53 +190,80 @@ export function VideoTable({
   });
 
   return (
-    <div className="rounded-md border">
-      <Table>
-        <TableHeader>
-          {table.getHeaderGroups().map((headerGroup) => (
-            <TableRow key={headerGroup.id}>
-              {headerGroup.headers.map((header) => (
-                <TableHead
-                  key={header.id}
-                  className={cn(header.column.columnDef.meta?.headerClassName)}
-                >
-                  {header.isPlaceholder
-                    ? null
-                    : flexRender(
-                        header.column.columnDef.header,
-                        header.getContext()
-                      )}
-                </TableHead>
-              ))}
-            </TableRow>
-          ))}
-        </TableHeader>
-        <TableBody>
-          {table.getRowModel().rows?.length ? (
-            table.getRowModel().rows.map((row) => (
-              <TableRow
-                key={row.id}
-                data-state={selectedVideos.has(row.original.id) && "selected"}
-              >
-                {row.getVisibleCells().map((cell) => (
-                  <TableCell
-                    key={cell.id}
-                    className={cn(cell.column.columnDef.meta?.cellClassName)}
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={onToggleSelectAll}
+          disabled={videos.length === 0}
+        >
+          {allSelected ? "Limpar seleção" : "Selecionar todos"}
+        </Button>
+        <span className="text-sm text-muted-foreground">
+          {videos.length} vídeos
+        </span>
+      </div>
+      <div className="rounded-md border">
+        <Table>
+          <TableHeader>
+            {table.getHeaderGroups().map((headerGroup) => (
+              <TableRow key={headerGroup.id}>
+                {headerGroup.headers.map((header) => (
+                  <TableHead
+                    key={header.id}
+                    className={cn(header.column.columnDef.meta?.headerClassName)}
                   >
-                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                  </TableCell>
+                    {header.isPlaceholder
+                      ? null
+                      : flexRender(
+                          header.column.columnDef.header,
+                          header.getContext()
+                        )}
+                  </TableHead>
                 ))}
               </TableRow>
-            ))
-          ) : (
-            <TableRow>
-              <TableCell colSpan={columns.length} className="h-24 text-center">
-                {UI_TEXT.playlists.noVideos}
-              </TableCell>
-            </TableRow>
-          )}
-        </TableBody>
-      </Table>
+            ))}
+          </TableHeader>
+          <TableBody>
+            {table.getRowModel().rows?.length ? (
+              table.getRowModel().rows.map((row) => {
+                const isSelected = selectedVideos.has(row.original.id);
+                return (
+                  <TableRow
+                    key={row.id}
+                    onClick={() => onToggleSelect(row.original.id)}
+                    className={cn(
+                      "cursor-pointer transition-colors",
+                      isSelected
+                        ? "bg-primary/10 outline outline-2 outline-primary/40"
+                        : "hover:bg-muted/50"
+                    )}
+                  >
+                    {row.getVisibleCells().map((cell) => (
+                      <TableCell
+                        key={cell.id}
+                        className={cn(cell.column.columnDef.meta?.cellClassName)}
+                      >
+                        {flexRender(
+                          cell.column.columnDef.cell,
+                          cell.getContext()
+                        )}
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                );
+              })
+            ) : (
+              <TableRow>
+                <TableCell colSpan={columns.length} className="h-24 text-center">
+                  {UI_TEXT.playlists.noVideos}
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </div>
     </div>
   );
 }
