@@ -246,8 +246,10 @@ export default function ConfigChannelsPage() {
                     </span>
                   </TableCell>
                   <TableCell>
-                    {channel.subscribedAt
-                      ? formatDate(channel.subscribedAt)
+                    {channel.subscribedAt || channel.config?.subscriptionDate
+                      ? formatDate(
+                          channel.subscribedAt || channel.config?.subscriptionDate
+                        )
                       : "-"}
                   </TableCell>
                   <TableCell className="text-right">
