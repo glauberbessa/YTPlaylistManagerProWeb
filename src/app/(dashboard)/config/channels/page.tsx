@@ -17,7 +17,7 @@ import {
 import { ChannelWithConfig } from "@/types/channel";
 import { UI_TEXT } from "@/lib/i18n";
 import { formatNumber, formatDate } from "@/lib/utils";
-import { Settings2, Check, Loader2, ArrowUp, ArrowDown } from "lucide-react";
+import { Settings2, ArrowUp, ArrowDown } from "lucide-react";
 
 async function fetchChannels(): Promise<ChannelWithConfig[]> {
   const res = await fetch("/api/channels", { credentials: "include" });
@@ -107,48 +107,61 @@ export default function ConfigChannelsPage() {
     return sortedChannels.filter((channel) => enabledMap[channel.id] ?? true);
   }, [sortedChannels, enabledMap, showOnlyActive]);
 
-  const handleToggle = (channelId: string, enabled: boolean) => {
-    setEnabledMap((prev) => ({ ...prev, [channelId]: enabled }));
-  };
-
-  const handleSave = () => {
+  const persistConfigs = (nextMap: Record<string, boolean>) => {
     if (!channels) return;
 
     const configs = channels.map((c) => ({
       channelId: c.id,
       title: c.title,
-      isEnabled: enabledMap[c.id] ?? true,
+      isEnabled: nextMap[c.id] ?? true,
     }));
 
     saveMutation.mutate(configs);
   };
 
+  const handleToggle = (channelId: string, enabled: boolean) => {
+    setEnabledMap((prev) => {
+      const nextMap = { ...prev, [channelId]: enabled };
+      persistConfigs(nextMap);
+      return nextMap;
+    });
+  };
+
   const handleEnableAll = () => {
     if (!channels) return;
+    const confirmed = window.confirm(
+      "Tem certeza que deseja ativar todos os canais?"
+    );
+    if (!confirmed) return;
     const map: Record<string, boolean> = {};
     channels.forEach((c) => {
       map[c.id] = true;
     });
     setEnabledMap(map);
+    persistConfigs(map);
   };
 
   const handleDisableAll = () => {
     if (!channels) return;
+    const confirmed = window.confirm(
+      "Tem certeza que deseja desativar todos os canais?"
+    );
+    if (!confirmed) return;
     const map: Record<string, boolean> = {};
     channels.forEach((c) => {
       map[c.id] = false;
     });
     setEnabledMap(map);
+    persistConfigs(map);
   };
 
-  const handleHeaderDoubleClick = (field: SortField) => {
-    if (sortField === field) {
-      // Toggle direction if same field
-      setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
+  const handleHeaderDoubleClick = () => {
+    if (sortField === "title") {
+      setSortField("subscribedAt");
+      setSortDirection("desc");
     } else {
-      // Set new field with default direction
-      setSortField(field);
-      setSortDirection(field === "subscribedAt" ? "desc" : "asc");
+      setSortField("title");
+      setSortDirection("asc");
     }
   };
 
@@ -190,19 +203,6 @@ export default function ConfigChannelsPage() {
         <Button variant="outline" onClick={handleDisableAll}>
           {UI_TEXT.config.disableAll}
         </Button>
-        <Button onClick={handleSave} disabled={saveMutation.isPending}>
-          {saveMutation.isPending ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              {UI_TEXT.config.saving}
-            </>
-          ) : (
-            <>
-              <Check className="mr-2 h-4 w-4" />
-              {UI_TEXT.general.save}
-            </>
-          )}
-        </Button>
       </div>
 
       {/* Channels Table */}
@@ -219,21 +219,12 @@ export default function ConfigChannelsPage() {
               <TableRow>
                 <TableHead
                   className="cursor-pointer select-none hover:bg-muted/50"
-                  onDoubleClick={() => handleHeaderDoubleClick("title")}
-                  title="Clique duplo para ordenar"
+                  onDoubleClick={handleHeaderDoubleClick}
+                  title="Clique duplo para alternar a ordenação"
                 >
-                  Título
-                  <SortIcon field="title" />
+                  Canal
+                  <SortIcon field={sortField} />
                 </TableHead>
-                <TableHead
-                  className="cursor-pointer select-none hover:bg-muted/50"
-                  onDoubleClick={() => handleHeaderDoubleClick("subscribedAt")}
-                  title="Clique duplo para ordenar"
-                >
-                  Data de Inscrição
-                  <SortIcon field="subscribedAt" />
-                </TableHead>
-                <TableHead className="text-right">Vídeos</TableHead>
                 <TableHead className="text-right">Status</TableHead>
               </TableRow>
             </TableHeader>
@@ -241,20 +232,16 @@ export default function ConfigChannelsPage() {
               {visibleChannels.map((channel) => (
                 <TableRow key={channel.id}>
                   <TableCell className="font-medium">
-                    <span className="truncate block max-w-[300px]">
-                      {channel.title}
-                    </span>
-                  </TableCell>
-                  <TableCell>
-                    {(() => {
-                      const subscriptionDate =
-                        channel.subscribedAt ?? channel.config?.subscriptionDate;
+                    <span className="truncate block max-w-[520px]">
+                      {channel.title} -{" "}
+                      {(() => {
+                        const subscriptionDate =
+                          channel.subscribedAt ?? channel.config?.subscriptionDate;
 
-                      return subscriptionDate ? formatDate(subscriptionDate) : "-";
-                    })()}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {formatNumber(channel.videoCount)}
+                        return subscriptionDate ? formatDate(subscriptionDate) : "-";
+                      })()}{" "}
+                      - {formatNumber(channel.videoCount)}
+                    </span>
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-3">

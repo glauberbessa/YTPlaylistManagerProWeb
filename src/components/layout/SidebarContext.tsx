@@ -6,18 +6,29 @@ interface SidebarContextType {
   isCollapsed: boolean;
   toggleSidebar: () => void;
   setCollapsed: (collapsed: boolean) => void;
+  autoCollapse: boolean;
+  setAutoCollapse: (autoCollapse: boolean) => void;
 }
 
 const SidebarContext = createContext<SidebarContextType | undefined>(undefined);
 
 export function SidebarProvider({ children }: { children: ReactNode }) {
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [autoCollapse, setAutoCollapse] = useState(true);
 
   const toggleSidebar = () => setIsCollapsed((prev) => !prev);
   const setCollapsed = (collapsed: boolean) => setIsCollapsed(collapsed);
 
   return (
-    <SidebarContext.Provider value={{ isCollapsed, toggleSidebar, setCollapsed }}>
+    <SidebarContext.Provider
+      value={{
+        isCollapsed,
+        toggleSidebar,
+        setCollapsed,
+        autoCollapse,
+        setAutoCollapse,
+      }}
+    >
       {children}
     </SidebarContext.Provider>
   );
