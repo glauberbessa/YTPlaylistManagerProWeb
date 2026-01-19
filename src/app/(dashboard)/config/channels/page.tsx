@@ -246,11 +246,12 @@ export default function ConfigChannelsPage() {
                     </span>
                   </TableCell>
                   <TableCell>
-                    {channel.subscribedAt || channel.config?.subscriptionDate
-                      ? formatDate(
-                          channel.subscribedAt || channel.config?.subscriptionDate
-                        )
-                      : "-"}
+                    {(() => {
+                      const subscriptionDate =
+                        channel.subscribedAt ?? channel.config?.subscriptionDate;
+
+                      return subscriptionDate ? formatDate(subscriptionDate) : "-";
+                    })()}
                   </TableCell>
                   <TableCell className="text-right">
                     {formatNumber(channel.videoCount)}
