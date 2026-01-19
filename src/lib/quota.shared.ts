@@ -8,6 +8,11 @@ export function calculateAssignCost(videoCount: number): number {
     return videoCount * 50;
 }
 
+export function calculateRemoveCost(videoCount: number): number {
+    // Cada remoção = delete (50) = 50 unidades
+    return videoCount * 50;
+}
+
 export function getMaxTransfersAvailable(remainingUnits: number): number {
     return Math.floor(remainingUnits / 100);
 }

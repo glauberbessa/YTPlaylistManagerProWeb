@@ -104,3 +104,55 @@ export function useAssign() {
     },
   });
 }
+
+interface RemoveRequest {
+  sourcePlaylistId: string;
+  videos: Array<{
+    playlistItemId: string;
+    videoId: string;
+  }>;
+}
+
+interface RemoveResponse {
+  success: boolean;
+  removed: number;
+  errors: number;
+  details: Array<{
+    videoId: string;
+    status: "success" | "error";
+    error?: string;
+  }>;
+}
+
+async function removeVideosFromPlaylist(
+  data: RemoveRequest
+): Promise<RemoveResponse> {
+  const res = await fetch("/api/playlists/remove", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+    credentials: "include",
+  });
+
+  if (!res.ok) {
+    const error = await res.json();
+    throw new Error(error.error || "Erro ao remover vídeos");
+  }
+
+  return res.json();
+}
+
+export function useRemoveFromPlaylist() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: removeVideosFromPlaylist,
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: ["playlistItems", variables.sourcePlaylistId],
+      });
+      queryClient.invalidateQueries({ queryKey: ["playlists"] });
+      queryClient.invalidateQueries({ queryKey: ["quota"] });
+    },
+  });
+}

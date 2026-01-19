@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -8,6 +8,7 @@ import {
   PlaylistSelector,
   VideoFilters,
   VideoGrid,
+  VideoList,
   VideoTable,
   StatsBar,
   TransferDialog,
@@ -16,8 +17,9 @@ import { usePlaylistItems } from "@/hooks/usePlaylistItems";
 import { useVideoFilters } from "@/hooks/useVideoFilters";
 import { useFilterStore } from "@/stores/filterStore";
 import { UI_TEXT } from "@/lib/i18n";
-import { ArrowRight, ListVideo } from "lucide-react";
+import { ArrowRight, ListVideo, Trash2 } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
+import { useRemoveFromPlaylist } from "@/hooks/useTransfer";
 import {
   Select,
   SelectContent,
@@ -28,12 +30,12 @@ import {
 
 export default function PlaylistsPage() {
   const { toast } = useToast();
-  const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null);
   const [activeSourceId, setActiveSourceId] = useState<string | null>(null);
   const [destinationPlaylistId, setDestinationPlaylistId] = useState<string | null>(null);
   const [selectedVideos, setSelectedVideos] = useState<Set<string>>(new Set());
   const [transferDialogOpen, setTransferDialogOpen] = useState(false);
-  const [layout, setLayout] = useState<"grid" | "table">("grid");
+  const [layout, setLayout] = useState<"grid" | "table" | "list">("grid");
+  const [isMobile, setIsMobile] = useState(false);
 
   const { filter, resetFilters } = useFilterStore();
 
@@ -43,7 +45,23 @@ export default function PlaylistsPage() {
     refetch,
   } = usePlaylistItems(activeSourceId);
 
+  const removeMutation = useRemoveFromPlaylist();
+
   const { filteredVideos, availableLanguages } = useVideoFilters(videos, filter);
+
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 640px)");
+    const handleChange = (event: MediaQueryListEvent | MediaQueryList) => {
+      setIsMobile(event.matches);
+      if (event.matches) {
+        setLayout("list");
+      }
+    };
+
+    handleChange(media);
+    media.addEventListener("change", handleChange);
+    return () => media.removeEventListener("change", handleChange);
+  }, []);
 
   const handleToggleSelect = useCallback((videoId: string) => {
     setSelectedVideos((prev) => {
@@ -67,18 +85,10 @@ export default function PlaylistsPage() {
   }, [filteredVideos]);
 
   const handleSourceChange = (playlistId: string) => {
-    setSelectedSourceId(playlistId);
-    // Resetar estado de visualização se mudar a playlist
     if (playlistId !== activeSourceId) {
-      setActiveSourceId(null);
+      setActiveSourceId(playlistId);
       setSelectedVideos(new Set());
       resetFilters();
-    }
-  };
-
-  const handleListVideos = () => {
-    if (selectedSourceId) {
-      setActiveSourceId(selectedSourceId);
     }
   };
 
@@ -119,6 +129,44 @@ export default function PlaylistsPage() {
       .map((v) => ({ playlistItemId: v.id, videoId: v.videoId }));
   }, [filteredVideos, selectedVideos]);
 
+  const handleRemoveFromSource = async () => {
+    if (!activeSourceId) return;
+    if (selectedVideos.size === 0) {
+      toast({
+        title: UI_TEXT.general.error,
+        description: UI_TEXT.messages.noSelection,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "Tem certeza que deseja excluir os vídeos selecionados da playlist de origem?"
+    );
+    if (!confirmed) return;
+
+    try {
+      await removeMutation.mutateAsync({
+        sourcePlaylistId: activeSourceId,
+        videos: videosToTransfer,
+      });
+      setSelectedVideos(new Set());
+      refetch();
+      toast({
+        title: UI_TEXT.general.success,
+        description: "Vídeos removidos da playlist de origem.",
+        variant: "success",
+      });
+    } catch (error) {
+      toast({
+        title: UI_TEXT.general.error,
+        description:
+          error instanceof Error ? error.message : "Erro ao remover vídeos.",
+        variant: "destructive",
+      });
+    }
+  };
+
   const handleTransferSuccess = () => {
     setSelectedVideos(new Set());
     refetch();
@@ -142,19 +190,11 @@ export default function PlaylistsPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <PlaylistSelector
-              value={selectedSourceId}
+              value={activeSourceId}
               onChange={handleSourceChange}
               label=""
               showOnlyEnabled
             />
-            <Button
-              className="w-full"
-              onClick={handleListVideos}
-              disabled={!selectedSourceId || selectedSourceId === activeSourceId && !isLoading}
-            >
-              <ListVideo className="mr-2 h-4 w-4" />
-              {UI_TEXT.playlists.listVideos}
-            </Button>
           </CardContent>
         </Card>
 
@@ -169,7 +209,7 @@ export default function PlaylistsPage() {
               value={destinationPlaylistId}
               onChange={setDestinationPlaylistId}
               label=""
-              excludeId={selectedSourceId || undefined}
+              excludeId={activeSourceId || undefined}
               showOnlyEnabled
             />
           </CardContent>
@@ -209,20 +249,31 @@ export default function PlaylistsPage() {
                 </span>
                 <Select
                   value={layout}
-                  onValueChange={(value) => setLayout(value as "grid" | "table")}
+                  onValueChange={(value) =>
+                    setLayout(value as "grid" | "table" | "list")
+                  }
+                  disabled={isMobile}
                 >
                   <SelectTrigger className="w-[180px]">
                     <SelectValue placeholder="Selecione o layout" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="grid">Grade</SelectItem>
-                    <SelectItem value="table">Tabela</SelectItem>
+                    <SelectItem value="grid">{UI_TEXT.viewMode.grid}</SelectItem>
+                    <SelectItem value="list">{UI_TEXT.viewMode.list}</SelectItem>
+                    <SelectItem value="table">{UI_TEXT.viewMode.table}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
               {layout === "table" ? (
                 <VideoTable
+                  videos={filteredVideos}
+                  selectedVideos={selectedVideos}
+                  onToggleSelect={handleToggleSelect}
+                  onToggleSelectAll={handleToggleSelectAll}
+                />
+              ) : layout === "list" ? (
+                <VideoList
                   videos={filteredVideos}
                   selectedVideos={selectedVideos}
                   onToggleSelect={handleToggleSelect}
@@ -248,15 +299,27 @@ export default function PlaylistsPage() {
             <span className="text-sm text-muted-foreground hidden md:inline-block">
               {selectedVideos.size} vídeos selecionados
             </span>
-            <Button
-              size="lg"
-              onClick={handleTransferClick}
-              disabled={selectedVideos.size === 0 || !destinationPlaylistId}
-              className="w-full md:w-auto ml-auto"
-            >
-              {UI_TEXT.playlists.transferVideos}
-              <ArrowRight className="ml-2 h-5 w-5" />
-            </Button>
+            <div className="flex w-full flex-col gap-3 md:w-auto md:flex-row md:items-center md:justify-end md:gap-2">
+              <Button
+                variant="outline"
+                size="lg"
+                onClick={handleRemoveFromSource}
+                disabled={selectedVideos.size === 0 || removeMutation.isPending}
+                className="w-full md:w-auto"
+              >
+                <Trash2 className="mr-2 h-5 w-5" />
+                {UI_TEXT.playlists.removeFromSource}
+              </Button>
+              <Button
+                size="lg"
+                onClick={handleTransferClick}
+                disabled={selectedVideos.size === 0 || !destinationPlaylistId}
+                className="w-full md:w-auto"
+              >
+                {UI_TEXT.playlists.transferVideos}
+                <ArrowRight className="ml-2 h-5 w-5" />
+              </Button>
+            </div>
           </div>
         </div>
       )}
@@ -270,7 +333,7 @@ export default function PlaylistsPage() {
           <CardContent className="flex flex-col items-center justify-center py-12">
             <ListVideo className="h-12 w-12 text-muted-foreground mb-4" />
             <p className="text-muted-foreground text-center">
-              Selecione uma playlist de origem e clique em &quot;{UI_TEXT.playlists.listVideos}&quot; para começar
+              Selecione uma playlist de origem para começar
             </p>
           </CardContent>
         </Card>

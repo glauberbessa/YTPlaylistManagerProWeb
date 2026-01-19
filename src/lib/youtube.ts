@@ -434,6 +434,7 @@ export class YouTubeService {
 
     const channels: Channel[] = [];
     const channelIds: string[] = [];
+    const seenChannelIds = new Set<string>();
     let pageToken: string | undefined;
     let pageCount = 0;
 
@@ -461,7 +462,8 @@ export class YouTubeService {
 
         for (const item of response.data.items || []) {
           const channelId = item.snippet?.resourceId?.channelId || "";
-          if (channelId) {
+          if (channelId && !seenChannelIds.has(channelId)) {
+            seenChannelIds.add(channelId);
             channelIds.push(channelId);
             channels.push({
               id: channelId,

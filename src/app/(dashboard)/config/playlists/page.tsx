@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -10,7 +10,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { PlaylistWithConfig } from "@/types/playlist";
 import { UI_TEXT } from "@/lib/i18n";
 import { formatNumber, formatDuration } from "@/lib/utils";
-import { Settings, Check, Loader2 } from "lucide-react";
+import { Settings } from "lucide-react";
 
 async function fetchPlaylists(): Promise<PlaylistWithConfig[]> {
   const res = await fetch("/api/playlists", { credentials: "include" });
@@ -71,17 +71,13 @@ export default function ConfigPlaylistsPage() {
     }
   }, [playlists]);
 
-  const handleToggle = (playlistId: string, enabled: boolean) => {
-    setEnabledMap((prev) => ({ ...prev, [playlistId]: enabled }));
-  };
-
-  const handleSave = () => {
+  const handleSave = (nextMap: Record<string, boolean>) => {
     if (!playlists) return;
 
     const configs = playlists.map((p) => ({
       playlistId: p.id,
       title: p.title,
-      isEnabled: enabledMap[p.id] ?? true,
+      isEnabled: nextMap[p.id] ?? true,
     }));
 
     saveMutation.mutate(configs);
@@ -89,20 +85,38 @@ export default function ConfigPlaylistsPage() {
 
   const handleEnableAll = () => {
     if (!playlists) return;
+    const confirmed = window.confirm(
+      "Tem certeza que deseja ativar todas as playlists?"
+    );
+    if (!confirmed) return;
     const map: Record<string, boolean> = {};
     playlists.forEach((p) => {
       map[p.id] = true;
     });
     setEnabledMap(map);
+    handleSave(map);
   };
 
   const handleDisableAll = () => {
     if (!playlists) return;
+    const confirmed = window.confirm(
+      "Tem certeza que deseja desativar todas as playlists?"
+    );
+    if (!confirmed) return;
     const map: Record<string, boolean> = {};
     playlists.forEach((p) => {
       map[p.id] = false;
     });
     setEnabledMap(map);
+    handleSave(map);
+  };
+
+  const handleToggle = (playlistId: string, enabled: boolean) => {
+    setEnabledMap((prev) => {
+      const nextMap = { ...prev, [playlistId]: enabled };
+      handleSave(nextMap);
+      return nextMap;
+    });
   };
 
   const filteredPlaylists = playlists?.filter((p) => {
@@ -140,19 +154,6 @@ export default function ConfigPlaylistsPage() {
         </Button>
         <Button variant="outline" onClick={handleDisableAll}>
           {UI_TEXT.config.disableAll}
-        </Button>
-        <Button onClick={handleSave} disabled={saveMutation.isPending}>
-          {saveMutation.isPending ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              {UI_TEXT.config.saving}
-            </>
-          ) : (
-            <>
-              <Check className="mr-2 h-4 w-4" />
-              {UI_TEXT.general.save}
-            </>
-          )}
         </Button>
       </div>
 
