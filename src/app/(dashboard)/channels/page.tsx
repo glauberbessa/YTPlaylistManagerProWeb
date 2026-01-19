@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -23,6 +23,7 @@ export default function ChannelsPage() {
   const [destinationPlaylistId, setDestinationPlaylistId] = useState<string | null>(null);
   const [selectedVideos, setSelectedVideos] = useState<Set<string>>(new Set());
   const [assignDialogOpen, setAssignDialogOpen] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(150);
 
   const { filter, resetFilters } = useFilterStore();
 
@@ -33,6 +34,14 @@ export default function ChannelsPage() {
   } = useChannelVideos(selectedChannelId);
 
   const { filteredVideos, availableLanguages } = useVideoFilters(videos, filter);
+
+  useEffect(() => {
+    setVisibleCount(150);
+  }, [selectedChannelId, videos.length, filter]);
+
+  const visibleVideos = useMemo(() => {
+    return filteredVideos.slice(0, visibleCount);
+  }, [filteredVideos, visibleCount]);
 
   const handleToggleSelect = useCallback((videoId: string) => {
     setSelectedVideos((prev) => {
@@ -48,12 +57,16 @@ export default function ChannelsPage() {
 
   const handleToggleSelectAll = useCallback(() => {
     setSelectedVideos((prev) => {
-      if (prev.size === filteredVideos.length) {
+      if (prev.size === visibleVideos.length) {
         return new Set();
       }
-      return new Set(filteredVideos.map((v) => v.videoId));
+      return new Set(visibleVideos.map((v) => v.videoId));
     });
-  }, [filteredVideos]);
+  }, [visibleVideos]);
+
+  const handleLoadMore = () => {
+    setVisibleCount((prev) => Math.min(prev + 50, filteredVideos.length));
+  };
 
   const handleChannelChange = (channelId: string) => {
     setSelectedChannelId(channelId);
@@ -172,11 +185,18 @@ export default function ChannelsPage() {
 
               {/* Table - usando videoId ao invés de id para canais */}
               <VideoTable
-                videos={filteredVideos.map((v) => ({ ...v, id: v.videoId }))}
+                videos={visibleVideos.map((v) => ({ ...v, id: v.videoId }))}
                 selectedVideos={selectedVideos}
                 onToggleSelect={handleToggleSelect}
                 onToggleSelectAll={handleToggleSelectAll}
               />
+              {visibleVideos.length < filteredVideos.length && (
+                <div className="flex justify-center">
+                  <Button variant="outline" onClick={handleLoadMore}>
+                    Listar + 50 vídeos
+                  </Button>
+                </div>
+              )}
 
               {/* Assign Button */}
               <div className="flex justify-end">

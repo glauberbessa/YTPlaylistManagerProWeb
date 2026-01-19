@@ -54,6 +54,9 @@ export function VideoList({
                   N/A
                 </div>
               )}
+              <div className="absolute bottom-1 right-1 rounded bg-black/70 px-1.5 py-0.5 text-[10px] font-medium text-white">
+                {formatDuration(video.durationInSeconds)}
+              </div>
             </div>
             <div className="flex flex-1 items-start gap-3">
               <Checkbox
@@ -74,7 +77,6 @@ export function VideoList({
                   {video.channelTitle}
                 </div>
                 <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
-                  <span>{formatDuration(video.durationInSeconds)}</span>
                   <span>{formatViewCount(video.viewCount)} visualizações</span>
                   <span>
                     {video.publishedAt ? formatDate(video.publishedAt) : "-"}
