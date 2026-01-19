@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { signOut, useSession } from "next-auth/react";
 import Image from "next/image";
 import {
@@ -19,11 +20,12 @@ import { UI_TEXT } from "@/lib/i18n";
 
 export function Header() {
   const { data: session } = useSession();
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   return (
     <header className="flex h-16 items-center justify-between border-b bg-background px-4 md:px-6">
       {/* Mobile Menu */}
-      <Sheet>
+      <Sheet open={isMenuOpen} onOpenChange={setIsMenuOpen}>
         <SheetTrigger asChild>
           <Button variant="ghost" size="icon" className="md:hidden">
             <Menu className="h-5 w-5" />
@@ -31,7 +33,7 @@ export function Header() {
           </Button>
         </SheetTrigger>
         <SheetContent side="left" className="p-0 w-64">
-          <Sidebar showToggle={false} />
+          <Sidebar showToggle={false} onNavigate={() => setIsMenuOpen(false)} />
         </SheetContent>
       </Sheet>
 

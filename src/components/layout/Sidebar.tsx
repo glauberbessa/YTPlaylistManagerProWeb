@@ -15,6 +15,7 @@ import {
 import { cn } from "@/lib/utils";
 import { UI_TEXT } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { useSidebar } from "./SidebarContext";
 import {
   Tooltip,
@@ -53,11 +54,19 @@ const navigation = [
 
 interface SidebarProps {
   showToggle?: boolean;
+  onNavigate?: () => void;
 }
 
-export function Sidebar({ showToggle = true }: SidebarProps) {
+export function Sidebar({ showToggle = true, onNavigate }: SidebarProps) {
   const pathname = usePathname();
-  const { isCollapsed, toggleSidebar } = useSidebar();
+  const { isCollapsed, toggleSidebar, autoCloseOnNavigate, setAutoCloseOnNavigate } =
+    useSidebar();
+
+  const handleNavigate = () => {
+    if (autoCloseOnNavigate) {
+      onNavigate?.();
+    }
+  };
 
   return (
     <TooltipProvider delayDuration={0}>
@@ -81,6 +90,7 @@ export function Sidebar({ showToggle = true }: SidebarProps) {
               <Link
                 key={item.name}
                 href={item.href}
+                onClick={handleNavigate}
                 className={cn(
                   "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
                   isActive
@@ -110,6 +120,34 @@ export function Sidebar({ showToggle = true }: SidebarProps) {
         </nav>
 
         <div className="border-t p-2 space-y-2">
+          <div
+            className={cn(
+              "flex items-center justify-between gap-2 rounded-md px-2 py-2 text-sm",
+              isCollapsed && "justify-center px-0"
+            )}
+          >
+            {!isCollapsed && (
+              <span className="text-muted-foreground">
+                {UI_TEXT.nav.autoCloseMenu}
+              </span>
+            )}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div>
+                  <Switch
+                    checked={autoCloseOnNavigate}
+                    onCheckedChange={setAutoCloseOnNavigate}
+                    aria-label={UI_TEXT.nav.autoCloseMenu}
+                  />
+                </div>
+              </TooltipTrigger>
+              {isCollapsed && (
+                <TooltipContent side="right">
+                  <p>{UI_TEXT.nav.autoCloseMenu}</p>
+                </TooltipContent>
+              )}
+            </Tooltip>
+          </div>
           {/* Toggle Button */}
           {showToggle && (
             <Tooltip>

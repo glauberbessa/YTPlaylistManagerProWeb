@@ -235,6 +235,7 @@ export default function ChannelsPage() {
                   selectedVideos={selectedVideos}
                   onToggleSelect={handleToggleSelect}
                   onToggleSelectAll={handleToggleSelectAll}
+                  combineMeta
                 />
               ) : (
                 <VideoGrid

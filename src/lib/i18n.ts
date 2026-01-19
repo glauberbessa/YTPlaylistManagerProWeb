@@ -7,6 +7,7 @@ export const UI_TEXT = {
     configChannels: "Configurar Canais",
     quota: "Quota",
     logout: "Sair",
+    autoCloseMenu: "Fechar menu automaticamente",
   },
 
   // Playlists
