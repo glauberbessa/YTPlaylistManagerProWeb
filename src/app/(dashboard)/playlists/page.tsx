@@ -278,6 +278,7 @@ export default function PlaylistsPage() {
                   selectedVideos={selectedVideos}
                   onToggleSelect={handleToggleSelect}
                   onToggleSelectAll={handleToggleSelectAll}
+                  combineMeta
                 />
               ) : (
                 <VideoGrid

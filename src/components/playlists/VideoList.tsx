@@ -11,6 +11,7 @@ interface VideoListProps {
   selectedVideos: Set<string>;
   onToggleSelect: (videoId: string) => void;
   onToggleSelectAll: () => void;
+  combineMeta?: boolean;
 }
 
 export function VideoList({
@@ -18,6 +19,7 @@ export function VideoList({
   selectedVideos,
   onToggleSelect,
   onToggleSelectAll,
+  combineMeta = false,
 }: VideoListProps) {
   const allSelected = videos.length > 0 && videos.every((v) => selectedVideos.has(v.id));
   const handleCardKeyDown = (event: KeyboardEvent<HTMLDivElement>, id: string) => {
@@ -85,15 +87,27 @@ export function VideoList({
                 >
                   {video.title}
                 </a>
-                <div className="text-xs text-muted-foreground">
-                  {video.channelTitle}
-                </div>
-                <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
-                  <span>{formatViewCount(video.viewCount)} visualizações</span>
-                  <span>
-                    {video.publishedAt ? formatDate(video.publishedAt) : "-"}
-                  </span>
-                </div>
+                {combineMeta ? (
+                  <div className="text-xs text-muted-foreground">
+                    {[
+                      video.channelTitle,
+                      `${formatViewCount(video.viewCount)} visualizações`,
+                      video.publishedAt ? formatDate(video.publishedAt) : "-",
+                    ].join(" • ")}
+                  </div>
+                ) : (
+                  <>
+                    <div className="text-xs text-muted-foreground">
+                      {video.channelTitle}
+                    </div>
+                    <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
+                      <span>{formatViewCount(video.viewCount)} visualizações</span>
+                      <span>
+                        {video.publishedAt ? formatDate(video.publishedAt) : "-"}
+                      </span>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           </div>
