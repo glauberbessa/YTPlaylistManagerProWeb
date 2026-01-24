@@ -66,7 +66,7 @@ async function main() {
     console.log(`Table '${PRIMARY_TABLE}' exists. Applying pending migrations...`);
   }
 
-  const migrateResult = runCommand("npx prisma migrate deploy");
+  const migrateResult = runCommand("node_modules/.bin/prisma migrate deploy");
 
   if (migrateResult.status === 0) {
     console.log("Migrations applied successfully.");
@@ -81,10 +81,10 @@ async function main() {
       "Detected P3005 error: Database schema is not empty but has no migration history.",
     );
     console.log("Baselining database by marking initial migration as applied...");
-    runCommand(`npx prisma migrate resolve --applied "${INITIAL_MIGRATION}"`);
+    runCommand(`node_modules/.bin/prisma migrate resolve --applied "${INITIAL_MIGRATION}"`);
 
     console.log("Running remaining migrations...");
-    runCommand("npx prisma migrate deploy");
+    runCommand("node_modules/.bin/prisma migrate deploy");
 
     console.log("Database migration completed successfully.");
     return;
@@ -98,10 +98,10 @@ async function main() {
   if (output.includes("does not exist")) {
     console.log("");
     console.log("Database tables don't exist. Attempting to create schema...");
-    runCommand("npx prisma db push --accept-data-loss");
+    runCommand("node_modules/.bin/prisma db push --accept-data-loss");
 
     console.log("Marking initial migration as applied...");
-    runCommand(`npx prisma migrate resolve --applied "${INITIAL_MIGRATION}"`);
+    runCommand(`node_modules/.bin/prisma migrate resolve --applied "${INITIAL_MIGRATION}"`);
 
     console.log("Database schema created successfully.");
     return;
@@ -114,10 +114,10 @@ async function main() {
   ) {
     console.log("");
     console.log("Detected existing table error. Baselining initial migration...");
-    runCommand(`npx prisma migrate resolve --applied "${INITIAL_MIGRATION}"`);
+    runCommand(`node_modules/.bin/prisma migrate resolve --applied "${INITIAL_MIGRATION}"`);
 
     console.log("Running remaining migrations...");
-    runCommand("npx prisma migrate deploy");
+    runCommand("node_modules/.bin/prisma migrate deploy");
 
     console.log("Database migration completed successfully.");
     return;
