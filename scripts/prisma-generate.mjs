@@ -11,7 +11,8 @@ if (!process.env.DATABASE_URL) {
   );
 }
 
-const result = spawnSync("npx prisma generate", {
+// Use local prisma binary to avoid npx installing newer incompatible versions
+const result = spawnSync("node_modules/.bin/prisma generate", {
   shell: true,
   stdio: "inherit",
 });

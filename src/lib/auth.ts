@@ -135,6 +135,9 @@ function extractMissingTable(message: string): string | null {
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(prisma),
   trustHost: true, // Required for Vercel deployment
+  // basePath must match the Next.js basePath + /api/auth
+  // This ensures NextAuth constructs correct callback URLs when the app is deployed under a subpath
+  basePath: "/ytpm/api/auth",
   secret: getAuthSecret(),
   debug: process.env.NODE_ENV === "development" || process.env.AUTH_DEBUG === "true",
   logger: {
