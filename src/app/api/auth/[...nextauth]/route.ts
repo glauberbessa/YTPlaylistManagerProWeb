@@ -112,8 +112,9 @@ function isPkceError(error: unknown): boolean {
  * This is called when a PKCE error occurs to prevent future errors.
  */
 function createPkceClearingRedirectResponse(request: NextRequest): NextResponse {
-  const url = new URL(request.url);
-  const isCallback = url.pathname.includes('/callback') || url.searchParams.has('code');
+  // Use nextUrl which has basePath handling built-in
+  const pathname = request.nextUrl.pathname;
+  const isCallback = pathname.includes('/callback') || request.nextUrl.searchParams.has('code');
 
   // Determine redirect destination
   // If this is a callback, redirect to login with error
@@ -122,10 +123,15 @@ function createPkceClearingRedirectResponse(request: NextRequest): NextResponse 
   if (isCallback) {
     redirectUrl = '/login?error=AuthenticationError';
   } else {
-    redirectUrl = url.pathname;
+    redirectUrl = pathname;
   }
 
-  const response = NextResponse.redirect(new URL(redirectUrl, request.url));
+  // Use nextUrl.clone() and set pathname to properly handle basePath
+  const redirectTarget = request.nextUrl.clone();
+  redirectTarget.pathname = redirectUrl.split('?')[0];
+  redirectTarget.search = redirectUrl.includes('?') ? redirectUrl.split('?')[1] : '';
+
+  const response = NextResponse.redirect(redirectTarget);
 
   // Clear all known PKCE cookie variations
   const cookiesToClear = [
