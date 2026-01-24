@@ -29,10 +29,12 @@ function isPkceCookie(cookieName: string): boolean {
  * - The cookie stripping in the route handler may not catch all cases
  */
 export function middleware(request: NextRequest) {
-  const url = new URL(request.url);
+  // Use nextUrl.pathname which has basePath stripped by Next.js
+  // This ensures the check works correctly regardless of basePath configuration
+  const pathname = request.nextUrl.pathname;
 
   // Only process auth-related routes
-  if (!url.pathname.startsWith('/api/auth')) {
+  if (!pathname.startsWith('/api/auth')) {
     return NextResponse.next();
   }
 
